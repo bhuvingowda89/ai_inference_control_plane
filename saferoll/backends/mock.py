@@ -17,4 +17,5 @@ class MockBackend:
         return Response(request.request_index, request.request_id, request.rollout_id,
                         request.epoch, request.intended_revision, self.config.revision,
                         self.role, True, self.config.fixed_latency_ms, False,
-                        f"{self.config.response_prefix}:{request.payload}")
+                        f"{self.config.response_prefix}:{request.payload}", request.desired_rollout_state,
+                        request.observed_rollout_state, request.transition_index)

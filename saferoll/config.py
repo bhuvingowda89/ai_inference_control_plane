@@ -1,4 +1,4 @@
-"""Strict, resolved YAML configuration with no implicit defaults."""
+"""Strict, resolved YAML configuration with explicit legacy migration defaults."""
 from __future__ import annotations
 from dataclasses import asdict, dataclass
 import math
@@ -44,6 +44,22 @@ class FaultConfig:
 
 
 @dataclass(frozen=True)
+class LifecycleConfig:
+    validation_requests: int
+    canary_requests: int
+    evaluation_requests: int
+    hold_requests: int
+    completion_requests: int
+    max_holds: int
+
+
+@dataclass(frozen=True)
+class DecisionPolicyConfig:
+    type: str
+    holds_before_decision: int
+
+
+@dataclass(frozen=True)
 class Config:
     experiment: ExperimentConfig
     rollout: RolloutConfig
@@ -51,11 +67,23 @@ class Config:
     candidate: BackendConfig
     routing: RoutingConfig
     fault: FaultConfig
+    lifecycle: LifecycleConfig
+    decision_policy: DecisionPolicyConfig
 
     @property
     def identity(self) -> RolloutIdentity:
         return RolloutIdentity(self.rollout.rollout_id, self.rollout.epoch,
                                self.baseline.revision, self.candidate.revision)
+
+    @property
+    def planned_requests(self) -> int:
+        l = self.lifecycle
+        p = self.decision_policy
+        desired_holds = l.max_holds + 1 if p.type == "always_hold" else (
+            p.holds_before_decision if p.type == "hold_then_promote" else 0)
+        holds = min(desired_holds, l.max_holds)
+        return (l.validation_requests + l.canary_requests + (1 + holds) * l.evaluation_requests
+                + holds * l.hold_requests + (l.completion_requests if desired_holds <= l.max_holds else 0))
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -66,6 +94,13 @@ def config_from_dict(data: Any) -> Config:
     sections = {"experiment": ExperimentConfig, "rollout": RolloutConfig,
                 "baseline": BackendConfig, "candidate": BackendConfig,
                 "routing": RoutingConfig, "fault": FaultConfig}
+    if isinstance(data, dict) and set(data) == set(sections):
+        # Accepted Phase 4A YAML: preserve every request's canary assignment.
+        data = {**data, "lifecycle": {"validation_requests": 0,
+                "canary_requests": data["experiment"].get("request_count", 0) if isinstance(data["experiment"], dict) else 0,
+                "evaluation_requests": 0, "hold_requests": 0, "completion_requests": 0, "max_holds": 1},
+                "decision_policy": {"type": "always_promote", "holds_before_decision": 0}}
+    sections.update(lifecycle=LifecycleConfig, decision_policy=DecisionPolicyConfig)
     if not isinstance(data, dict) or set(data) != set(sections):
         raise ValueError("config requires exactly: " + ", ".join(sections))
     resolved = {}
@@ -95,6 +130,16 @@ def config_from_dict(data: Any) -> Config:
     if max(weights.baseline_weight, weights.candidate_weight) > 1 or not math.isclose(
             weights.baseline_weight + weights.candidate_weight, 1.0, rel_tol=0, abs_tol=1e-9):
         raise ValueError("routing weights must be in [0,1] and sum to 1")
+    l = config.lifecycle
+    if any(value < 0 for value in asdict(l).values()):
+        raise ValueError("lifecycle counts and max_holds must be nonnegative")
+    p = config.decision_policy
+    if p.type not in {"always_promote", "always_rollback", "hold_then_promote", "always_hold"}:
+        raise ValueError("unsupported deterministic test policy")
+    if p.holds_before_decision < 0 or (p.type != "hold_then_promote" and p.holds_before_decision != 0):
+        raise ValueError("holds_before_decision requires hold_then_promote and a nonnegative value")
+    if config.experiment.request_count != config.planned_requests:
+        raise ValueError("request_count must equal the deterministic lifecycle request budget")
     fault = config.fault
     if fault.type != "latency" or fault.target != "candidate":
         raise ValueError("only latency fault with candidate target is supported")

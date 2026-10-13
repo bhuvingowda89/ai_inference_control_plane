@@ -14,7 +14,7 @@ def test_determinism_across_reruns(config, tmp_path):
     first = run_experiment(config, tmp_path)
     second = run_experiment(config, tmp_path)
     assert first != second
-    for name in ("config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json"):
+    for name in ("config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json", "rollout_transitions.jsonl"):
         assert (first / name).read_bytes() == (second / name).read_bytes()
     diagnostic = {"python_version", "platform", "git_revision", "git_dirty", "git_metadata_status"}
     manifests = [json.loads((p / "manifest.json").read_text()) for p in (first, second)]
@@ -67,12 +67,14 @@ def test_cli_and_hash_randomization(tmp_path):
 
 def test_zero_requests(config, tmp_path):
     empty = replace(config, experiment=replace(config.experiment, request_count=0),
-                    fault=replace(config.fault, start_request=0, end_request=0))
+                    fault=replace(config.fault, start_request=0, end_request=0),
+                    lifecycle=replace(config.lifecycle, canary_requests=0))
     path = run_experiment(empty, tmp_path)
     summary = json.loads((path / "summary.json").read_text())
     assert summary["completed_requests"] == 0 and summary["candidate_fraction"] == 0
     assert summary["mean_candidate_latency_ms"] is None
-    assert len((path / "events.jsonl").read_text().splitlines()) == 2
+    assert sum(json.loads(line)["event_type"].startswith("REQUEST_") for line in
+               (path / "events.jsonl").read_text().splitlines()) == 0
 
 
 @pytest.mark.parametrize("candidate_weight", [0.0, 1.0])
@@ -86,6 +88,6 @@ def test_routing_extremes_and_run_end_fault(config, tmp_path, candidate_weight):
     assert summary["fault_affected_requests"] == int(20 * candidate_weight)
     assert summary["mean_candidate_latency_ms"] == (62 if candidate_weight else None)
     events = [json.loads(line) for line in (path / "events.jsonl").read_text().splitlines()]
-    assert events[1]["event_type"] == "FAULT_ACTIVATED"
+    assert next(e for e in events if e["event_type"] == "FAULT_ACTIVATED")["details"]["request_index"] == 0
     assert events[-2]["event_type"] == "FAULT_CLEARED"
     assert events[-2]["details"]["request_index"] == 20

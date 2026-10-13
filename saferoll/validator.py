@@ -8,6 +8,8 @@ from typing import Any
 from .artifacts import canonical_json, config_hash, write_json
 from .config import config_from_dict
 from .runner import simulate
+from .lifecycle import STATE_MACHINE_VERSION
+from .lifecycle_validation import validate_lifecycle
 from .schemas import Event, EVENT_TYPES, REQUEST_COLUMNS, SCHEMA_VERSION
 
 
@@ -15,7 +17,7 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
     """Report corrupt/missing artifacts rather than crashing; persist every result."""
     root = Path(run_dir)
     issues: list[str] = []
-    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json"]
+    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl"]
     for name in required:
         if not (root / name).is_file():
             issues.append(f"missing artifact: {name}")
@@ -30,8 +32,11 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
                     issues.append("requests.csv schema fields/order mismatch")
                 rows = list(reader)
             events = [json.loads(line) for line in (root / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+            transitions = [json.loads(line) for line in (root / "rollout_transitions.jsonl").read_text(encoding="utf-8").splitlines()]
+            issues.extend(validate_lifecycle(config, transitions, events, rows, summary))
             expected_responses, expected_events, expected_summary = simulate(config)
-            expected_manifest = {"schema_version": SCHEMA_VERSION, "experiment_name": config.experiment.name,
+            expected_manifest = {"schema_version": SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
+                                 "decision_policy_type": config.decision_policy.type, "initial_state": "STABLE", "experiment_name": config.experiment.name,
                                  "seed": config.experiment.seed, **asdict(config.identity),
                                  "request_count": config.experiment.request_count, "config_sha256": config_hash(config)}
             if not isinstance(manifest, dict):

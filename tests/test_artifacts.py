@@ -8,7 +8,7 @@ from saferoll.runner import simulate, summarize
 
 def test_complete_artifacts_and_summary(run_dir, config):
     assert {p.name for p in run_dir.iterdir()} == {
-        "manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json"}
+        "manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json", "rollout_transitions.jsonl"}
     manifest = json.loads((run_dir / "manifest.json").read_text())
     assert manifest["config_sha256"] == config_hash(config)
     with (run_dir / "requests.csv").open(newline="") as stream:

@@ -1,0 +1,34 @@
+experiment:
+  name: phase4b-promote
+  seed: 101
+  request_count: 40
+rollout:
+  rollout_id: phase4b-promote-rollout
+  epoch: 1
+baseline:
+  revision: baseline-v1
+  fixed_latency_ms: 10
+  response_prefix: baseline
+candidate:
+  revision: candidate-v2
+  fixed_latency_ms: 12
+  response_prefix: candidate
+routing:
+  baseline_weight: 0.8
+  candidate_weight: 0.2
+fault:
+  type: latency
+  target: candidate
+  start_request: 8
+  end_request: 12
+  added_latency_ms: 50
+lifecycle:
+  validation_requests: 5
+  canary_requests: 20
+  evaluation_requests: 10
+  hold_requests: 3
+  completion_requests: 5
+  max_holds: 2
+decision_policy:
+  type: always_promote
+  holds_before_decision: 0
