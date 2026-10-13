@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saferoll"
+version = "0.1.0"
+description = "Deterministic SafeRoll Phase 4A experimental substrate"
+requires-python = ">=3.9"
+dependencies = ["PyYAML>=6,<7"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[tool.setuptools.packages.find]
+include = ["saferoll*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,24 @@
+experiment:
+  name: phase4a-smoke
+  seed: 101
+  request_count: 20
+rollout:
+  rollout_id: phase4a-smoke-rollout
+  epoch: 1
+baseline:
+  revision: baseline-v1
+  fixed_latency_ms: 10
+  response_prefix: baseline
+candidate:
+  revision: candidate-v2
+  fixed_latency_ms: 12
+  response_prefix: candidate
+routing:
+  baseline_weight: 0.8
+  candidate_weight: 0.2
+fault:
+  type: latency
+  target: candidate
+  start_request: 8
+  end_request: 12
+  added_latency_ms: 50

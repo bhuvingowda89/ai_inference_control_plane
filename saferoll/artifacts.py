@@ -1,0 +1,68 @@
+"""Stable UTF-8 artifact serialization and diagnostic provenance."""
+from __future__ import annotations
+import csv
+from dataclasses import asdict
+import hashlib
+import json
+from pathlib import Path
+import platform
+import subprocess
+from typing import Any
+from .config import Config
+from .schemas import Event, Response, REQUEST_COLUMNS, SCHEMA_VERSION
+
+
+def canonical_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False)
+
+
+def config_hash(config: Config) -> str:
+    return hashlib.sha256(canonical_json(config.to_dict()).encode("utf-8")).hexdigest()
+
+
+def write_json(path: Path, value: Any) -> None:
+    path.write_text(canonical_json(value) + "\n", encoding="utf-8")
+
+
+def build_manifest(config: Config) -> dict[str, Any]:
+    package = Path(__file__).parent
+    source = hashlib.sha256()
+    for path in sorted(package.rglob("*.py")):
+        source.update(path.relative_to(package).as_posix().encode("utf-8") + b"\0")
+        source.update(path.read_bytes() + b"\0")
+    manifest = {"schema_version": SCHEMA_VERSION, "experiment_name": config.experiment.name,
+                "seed": config.experiment.seed, **asdict(config.identity),
+                "request_count": config.experiment.request_count,
+                "config_sha256": config_hash(config), "source_tree_sha256": source.hexdigest(),
+                "python_version": platform.python_version(), "platform": platform.platform(),
+                "git_revision": None, "git_dirty": None}
+    try:
+        revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=package,
+                                  capture_output=True, text=True, check=False)
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=package,
+                                capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        manifest["git_metadata_status"] = "git executable unavailable"
+    else:
+        if revision.returncode == 0 and status.returncode == 0:
+            manifest.update(git_revision=revision.stdout.strip(), git_dirty=bool(status.stdout))
+        else:
+            manifest["git_metadata_status"] = "Git metadata unavailable"
+    return manifest
+
+
+def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
+                    events: list[Event], summary: dict[str, Any]) -> None:
+    """Write only to a new directory; never overwrite an earlier experiment."""
+    run_dir.mkdir(parents=True, exist_ok=False)
+    write_json(run_dir / "manifest.json", build_manifest(config))
+    write_json(run_dir / "config.resolved.json", config.to_dict())
+    with (run_dir / "requests.csv").open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=REQUEST_COLUMNS, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(asdict(response) for response in responses)
+    with (run_dir / "events.jsonl").open("w", encoding="utf-8", newline="") as stream:
+        for event in events:
+            stream.write(canonical_json(asdict(event)) + "\n")
+    write_json(run_dir / "summary.json", summary)
