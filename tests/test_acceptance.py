@@ -14,7 +14,7 @@ def test_determinism_across_reruns(config, tmp_path):
     first = run_experiment(config, tmp_path)
     second = run_experiment(config, tmp_path)
     assert first != second
-    for name in ("config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json", "rollout_transitions.jsonl"):
+    for name in ("config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "validation.json", "rollout_transitions.jsonl", "system_evidence.jsonl"):
         assert (first / name).read_bytes() == (second / name).read_bytes()
     diagnostic = {"python_version", "platform", "git_revision", "git_dirty", "git_metadata_status"}
     manifests = [json.loads((p / "manifest.json").read_text()) for p in (first, second)]

@@ -42,7 +42,7 @@ def test_scenarios_and_determinism(tmp_path, scenario, outcome, path_states, hol
     assert summary['transition_count'] == len(transitions)
     assert summary['completed_requests'] == config.experiment.request_count
     manifest = json.loads((one / 'manifest.json').read_text())
-    assert manifest['schema_version'] == '2.0'
+    assert manifest['schema_version'] == '3.0'
     assert manifest['state_machine_version'] == '1.0'
     assert manifest['initial_state'] == 'STABLE'
     assert manifest['decision_policy_type'] == config.decision_policy.type
@@ -63,7 +63,7 @@ def test_scenarios_and_determinism(tmp_path, scenario, outcome, path_states, hol
         if row['observed_rollout_state'] == 'HOLDING':
             assert t['to_observed_candidate_weight'] == config.routing.candidate_weight
     assert states.count('RECOVERING' if scenario == 'rollback' else 'PROMOTING') == 5
-    for name in ('config.resolved.json', 'requests.csv', 'events.jsonl', 'rollout_transitions.jsonl', 'summary.json', 'validation.json'):
+    for name in ('config.resolved.json', 'requests.csv', 'events.jsonl', 'rollout_transitions.jsonl', 'summary.json', 'validation.json', 'system_evidence.jsonl'):
         assert (one / name).read_bytes() == (two / name).read_bytes()
     events = [json.loads(line) for line in (one / 'events.jsonl').read_text().splitlines()]
     assert [e['logical_time'] for e in events] == list(range(len(events)))

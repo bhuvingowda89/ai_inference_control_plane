@@ -8,6 +8,7 @@ from .backends.mock import MockBackend
 from .config import Config, config_from_dict
 from .faults.base import FaultInjector
 from .faults.latency import LatencyFault
+from .faults.failure import CandidateRequestFailure
 from .ids import request_id
 from .lifecycle import RolloutCoordinator, RolloutState as S
 from .policies import build_test_policy
@@ -32,7 +33,8 @@ def summarize(config: Config, responses: list[Response]) -> dict[str, Any]:
 def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any]]:
     router = WeightedRouter(config.routing, config.experiment.seed)
     backends = {role: MockBackend(role, getattr(config, role)) for role in ("baseline", "candidate")}
-    fault: FaultInjector = LatencyFault(config.fault)
+    fault: FaultInjector = (LatencyFault(config.fault) if config.fault.type == "latency"
+                            else CandidateRequestFailure(config.fault))
     responses: list[Response] = []
     events: list[Event] = []
     identity = config.identity

@@ -60,6 +60,12 @@ class DecisionPolicyConfig:
 
 
 @dataclass(frozen=True)
+class EvidenceConfig:
+    minimum_samples_per_revision: int = 3
+    max_age_logical_units: int = 10
+
+
+@dataclass(frozen=True)
 class Config:
     experiment: ExperimentConfig
     rollout: RolloutConfig
@@ -69,6 +75,7 @@ class Config:
     fault: FaultConfig
     lifecycle: LifecycleConfig
     decision_policy: DecisionPolicyConfig
+    evidence: EvidenceConfig = EvidenceConfig()
 
     @property
     def identity(self) -> RolloutIdentity:
@@ -94,6 +101,11 @@ def config_from_dict(data: Any) -> Config:
     sections = {"experiment": ExperimentConfig, "rollout": RolloutConfig,
                 "baseline": BackendConfig, "candidate": BackendConfig,
                 "routing": RoutingConfig, "fault": FaultConfig}
+    if isinstance(data, dict):
+        data = dict(data)
+        evidence = data.pop("evidence", asdict(EvidenceConfig()))
+    else:
+        evidence = None
     if isinstance(data, dict) and set(data) == set(sections):
         # Accepted Phase 4A YAML: preserve every request's canary assignment.
         data = {**data, "lifecycle": {"validation_requests": 0,
@@ -101,6 +113,9 @@ def config_from_dict(data: Any) -> Config:
                 "evaluation_requests": 0, "hold_requests": 0, "completion_requests": 0, "max_holds": 1},
                 "decision_policy": {"type": "always_promote", "holds_before_decision": 0}}
     sections.update(lifecycle=LifecycleConfig, decision_policy=DecisionPolicyConfig)
+    if isinstance(data, dict):
+        data["evidence"] = evidence
+    sections["evidence"] = EvidenceConfig
     if not isinstance(data, dict) or set(data) != set(sections):
         raise ValueError("config requires exactly: " + ", ".join(sections))
     resolved = {}
@@ -140,9 +155,13 @@ def config_from_dict(data: Any) -> Config:
         raise ValueError("holds_before_decision requires hold_then_promote and a nonnegative value")
     if config.experiment.request_count != config.planned_requests:
         raise ValueError("request_count must equal the deterministic lifecycle request budget")
+    if config.evidence.minimum_samples_per_revision < 1 or config.evidence.max_age_logical_units < 0:
+        raise ValueError("evidence minimum must be positive and maximum age nonnegative")
     fault = config.fault
-    if fault.type != "latency" or fault.target != "candidate":
-        raise ValueError("only latency fault with candidate target is supported")
+    if fault.type not in {"latency", "candidate_request_failure"} or fault.target != "candidate":
+        raise ValueError("only latency/candidate_request_failure with candidate target is supported")
+    if fault.type == "candidate_request_failure" and fault.added_latency_ms != 0:
+        raise ValueError("request failure requires added_latency_ms: 0")
     if not math.isfinite(config.candidate.fixed_latency_ms + fault.added_latency_ms):
         raise ValueError("candidate latency plus fault must be finite")
     # Empty runs have no interval; [0,0] is the sole accepted inert configuration.
