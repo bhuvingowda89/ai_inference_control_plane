@@ -14,6 +14,7 @@ from .faults.failure import CandidateRequestFailure
 from .ids import request_id
 from .lifecycle import RolloutCoordinator, RolloutState as S
 from .policies import build_test_policy
+from .research.runtime import make_live_decision
 from .router import WeightedRouter
 from .planes import ServingPlanes
 from .containment import containment_facts
@@ -127,10 +128,16 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
     evaluation_index = 0
     while coordinator.snapshot.observed_state == S.EVALUATING:
         serve(config.lifecycle.evaluation_requests)
-        decision = policy.decide(coordinator.snapshot, evaluation_index)
-        emit("DECISION_MADE", details={"decision": decision.value, "evaluation_index": evaluation_index,
-                                      "policy_type": config.decision_policy.type,
-                                      "transition_index": coordinator.snapshot.transition_index})
+        details = {"evaluation_index": evaluation_index, "transition_index": coordinator.snapshot.transition_index}
+        if config.policy.type == "dummy":
+            decision = policy.decide(coordinator.snapshot, evaluation_index)
+            details.update(decision=decision.value, policy_type=config.decision_policy.type)
+        else:
+            visible, result = make_live_decision(config, responses, events, planes.records, coordinator.snapshot.transition_index)
+            from .lifecycle import Decision
+            decision = Decision(result["decision"])
+            details.update(decision=decision.value, policy_type=config.policy.type, policy_input=visible, policy_result=result)
+        emit("DECISION_MADE", details=details)
         record = coordinator.apply_decision(decision, len(events), "deterministic test provider decision")
         emit("STATE_TRANSITION", details=asdict(record))
         capture("transition")
@@ -161,6 +168,11 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
                    behavior_samples=sum(e.event_type == "BEHAVIOR_PROBE_COMPLETED" for e in events),
                    paired_behavior_samples=(window_sequence * min(config.behavior_evidence.baseline_items_per_window,
                        config.behavior_evidence.candidate_items_per_window) if config.behavior_evidence.enabled else 0))
+    if config.policy.type != "dummy":
+        summary.update(planned_requests=len(responses), request_budget=config.experiment.request_count,
+            promote_count=sum(e.event_type == "DECISION_MADE" and e.details["decision"] == "PROMOTE" for e in events),
+            rollback_count=sum(e.event_type == "DECISION_MADE" and e.details["decision"] == "ROLLBACK" for e in events),
+            policy_hold_count=sum(e.event_type == "DECISION_MADE" and e.details["decision"] == "HOLD" for e in events))
     summary.update(containment_facts([asdict(e) for e in events], planes.records))
     return responses, events, summary
 

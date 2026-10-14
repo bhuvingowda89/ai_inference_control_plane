@@ -1,4 +1,4 @@
-# SafeRoll — Phase 4E
+# SafeRoll — Phase 4F
 
 This repository is an independent deterministic research prototype for **SafeRoll:
 State-Consistent Progressive Deployment and Automated Rollback for AI Inference
@@ -7,11 +7,13 @@ artifacts and validation. Phase 4B adds control-plane lifecycle semantics. Phase
 system evidence with strict lifecycle windows, sufficiency, freshness and independent
 metric validation. Phase 4D adds deterministic ground-truth behavior probes and
 independently validated behavior evidence. Phase 4E adds three-plane routing and
-controller-observation fault views. System evidence reports operational facts; it does not decide
+controller-observation fault views. Phase 4F adds controller-only rollout policies
+and a separate post-hoc known-model oracle. System evidence reports operational facts; it does not decide
 whether a revision is safe.
 
-Current decision providers are **deterministic test scaffolding only**, not the
-SafeRoll research policy or scientific baselines. There are no SafeRoll decision policies, statistical policies, real models, plots,
+Legacy decision providers remain deterministic lifecycle scaffolding. Research
+policies are explicit and threshold-configurable. There are no learned policies,
+statistical campaigns, real models or plots,
 cloud services, databases, notebooks, containers or deployment integrations. No
 research performance claims are made. Execution is sequential and CPU-only.
 
@@ -151,7 +153,7 @@ zero validation/evaluation/hold/completion requests, `canary_requests` equal to
 `experiment.request_count`, `max_holds: 1`, and `always_promote` with zero holds.
 This preserves every Phase 4A scientific request ID, route, output, latency and
 fault assignment while adding lifecycle context. New resolved config hashes and
-schema-5.0 artifacts intentionally differ. Archived schema-1.0/2.0/3.0/4.0 run artifacts
+schema-6.0 artifacts intentionally differ. Archived schema-1.0/2.0/3.0/4.0/5.0 run artifacts
 are not upgraded in place; regenerate from their YAML config to use this validator.
 
 ## Routing, identity, faults and logical ordering
@@ -182,7 +184,7 @@ operations. Decisions have their own earlier event time. Every request records
 its current lifecycle transition index. Scientific artifacts contain no wall-clock
 timestamps or filesystem paths.
 
-## Artifacts — schema 5.0, state machine 1.0, system/behavior evidence 1.0
+## Artifacts — schema 6.0, state machine 1.0, system/behavior evidence 1.0
 
 Each run directory contains:
 
@@ -201,6 +203,9 @@ Each run directory contains:
 | `routing_states.jsonl` | Explicit desired, observed and effective state/weights, with request routing references |
 | `observations.jsonl` | Controller-visible evidence/routing envelopes, source references, ages and fault status |
 | `fault_events.jsonl` | Ordered FAULT_ACTIVATED/FAULT_CLEARED records with distinct IDs and configured parameters |
+| `policy_inputs.jsonl` | Exact closed controller capability passed to each research policy |
+| `decisions.jsonl` | Deterministic decision IDs, snapshot references, enum reasons and explanations |
+| `decision_evaluations.jsonl` | Separate post-hoc oracle truth, correctness category and critical-error flag |
 | `summary.json` | Phase 4A metrics and identity plus `final_lifecycle_state`, `final_outcome`, `decision_count`, `hold_count`, `transition_count` |
 | `validation.json` | Boolean `valid` and list of diagnostic `issues` |
 
@@ -241,7 +246,7 @@ byte-identical scientific request, event, lifecycle, evidence, summary, resolved
 validation files. Python/platform/Git diagnostic fields may differ. Source digest
 changes identify implementation changes; hashes are not authentication signatures.
 
-Phase 4F has not been implemented.
+Phase 4G has not been implemented.
 
 
 ## System evidence and windows
@@ -660,4 +665,200 @@ Negative tests corrupt references, plane weights, observation identity/status,
 fault events, containment facts and immutable ground truth. All valid observer
 faults remain valid scientific runs.
 
-Phase 4E still does not implement the final SafeRoll policy. Phase 4F is not started.
+The Phase 4E substrate remains available independently. Phase 4F policy semantics
+are documented below; Phase 4G is not started.
+
+
+## Phase 4F information boundary
+
+**SafeRoll policies operate only on controller-visible observations; ground truth
+is used only for post-hoc experimental evaluation.**
+
+The trusted adapter projects delivered observation payloads into closed, frozen
+capabilities. It passes reported identity, scoped observation IDs, metrics,
+sufficiency and freshness plus controller-owned rollout identity, command-window
+identity and lifecycle context. It does not pass effective routing, fault flags,
+fault IDs/configuration, ground-truth references, raw labels/probes, oracle results,
+future observations or expected decisions. Internal source references are used
+only to route a delivered response to its controller-owned query subscription;
+these references never enter a policy snapshot. Routing projection reads only the
+reported observed state/weight and the controller's desired command. In particular,
+it does **not** pass a MISMATCHED status derived from hidden effective routing.
+
+| Policy | Capability and semantics |
+| --- | --- |
+| ReadinessGate | Minimal candidate availability/success; promotes a ready service, rolls back catastrophic readiness failure, holds if unavailable |
+| OpsGate | System error/p95 comparisons with mandatory configured sufficiency/freshness; no behavior capability |
+| BehaviorGate | Classification or structured quality with sufficiency/freshness; no system capability |
+| AIGate | Strong combined system and behavior checks, including the same sufficiency/freshness checks; no routing capability |
+| SafeRoll | AIGate monitoring plus strict reported attribution, matched behavior item populations and desired/observed state/routing checks |
+
+All policies receive only a frozen threshold configuration, not the experiment
+Config. Each requires its exact input type, so supplying SafeRoll's broader input
+to AIGate or OpsGate fails. Baselines trust their role-scoped monitoring queries;
+SafeRoll additionally verifies reported rollout/epoch/revision/role attribution.
+The boundary prevents accidental leakage in this implementation; it is not a
+sandbox for arbitrary hostile Python plugins.
+
+## Frozen configurable comparisons
+
+Every Phase 4F smoke config explicitly supplies the following values. Defaults
+resolve identically; no run learns or tunes them. Pilot/campaign freeze will fix
+these separately from this phase.
+
+```yaml
+policy:
+  type: saferoll
+  numeric_tolerance: 1.0e-9
+  system:
+    max_error_rate: 0.05
+    max_latency_regression_fraction: 0.20
+    min_readiness_success_rate: 0.50
+  behavior:
+    max_accuracy_drop: 0.05
+    max_exact_match_drop: 0.05
+    min_structure_valid_rate: 0.95
+  evidence:
+    require_system_sufficient: true
+    require_behavior_sufficient: true
+    require_fresh_system: true
+    require_fresh_behavior: true
+  consistency:
+    require_observed_routing_match: true
+```
+
+Candidate error rate must be at most the configured maximum. Candidate p95 must
+be at most `baseline_p95 * (1 + max_latency_regression_fraction)`; no division by
+baseline latency occurs, including when baseline latency is zero. Candidate
+accuracy/exact-match must be at least baseline minus allowed drop. Structure-valid
+rate has its own absolute lower bound. Readiness uses its configured lower success
+bound independently of QoS/behavior monitoring.
+
+An upper-bound violation means `value > bound + numeric_tolerance`; a lower-bound
+violation means `bound > value + numeric_tolerance`. Equality passes. Tolerance is
+absolute in the compared quantity (ms for latency, fraction for rates). Accuracy
+drop .05 passes with allowance .05; .0500001 fails at the default tolerance.
+Mandatory switches control promotion sufficiency/freshness. Rollback from metrics
+always requires sufficient, fresh, available evidence in the harmful channel,
+even if promotion requirements were explicitly relaxed.
+
+## Explicit SafeRoll precedence and HOLD
+
+1. Non-EVALUATING lifecycle context abstains. Any available mandatory evidence with
+   ambiguous reported rollout/epoch/revision/role attribution abstains before harm
+   interpretation. Fresh reported window/lifecycle attribution must also match.
+2. Assess each channel independently for missing observations, sufficiency,
+   freshness, defined metrics and harmful comparisons. Behavior comparisons under
+   SafeRoll also require equal item populations when both are sufficient/fresh.
+3. Reliable harmful evidence yields ROLLBACK. It dominates routing/state mismatch,
+   and missing/insufficient/stale evidence in the other channel. Stale apparent
+   harm cannot justify rollback. System harm precedes behavior harm in explanations.
+4. Without reliable harm, mandatory evidence uncertainty yields HOLD.
+5. With acceptable evidence, desired/observed state mismatch or configured material
+   routing mismatch yields HOLD. No hidden effective state is consulted.
+6. Otherwise PROMOTE with ALL_REQUIRED_EVIDENCE_ACCEPTABLE.
+
+AIGate uses the same monitoring reliability and harm precedence as SafeRoll,
+without its state/routing or stricter attribution checks. This is a strong baseline,
+not a deliberately stale-blind monitor. HOLD is abstention: preserve exposure,
+serve the bounded hold cycle, reevaluate, and fail deterministically if the
+accepted lifecycle hold bound is exceeded. Missing evidence is not assumed healthy.
+No observation delay is bypassed by reading the underlying evidence store.
+
+Reason codes are versioned enums: IDENTITY_UNCERTAINTY, STATE_NOT_EVALUATING,
+MISSING_SYSTEM_OBSERVATION, MISSING_BEHAVIOR_OBSERVATION,
+INSUFFICIENT_SYSTEM_EVIDENCE, INSUFFICIENT_BEHAVIOR_EVIDENCE,
+STALE_SYSTEM_EVIDENCE, STALE_BEHAVIOR_EVIDENCE, ROLLOUT_STATE_MISMATCH,
+ROUTING_STATE_MISMATCH, SYSTEM_UNAVAILABLE, SYSTEM_REGRESSION,
+BEHAVIOR_REGRESSION and ALL_REQUIRED_EVIDENCE_ACCEPTABLE. Ordered reason details
+accompany the codes; snapshots and resolved thresholds expose the exact comparisons.
+
+## Live execution, bounded workloads and artifacts
+
+Research policies are queried during the live EVALUATING phase. At its current
+logical boundary, the runner closes that request batch using a temporary closure
+marker with **no decision**, collects evidence, applies the observation adapter,
+projects the delivered view, then makes the decision. The actual DECISION_MADE
+event occupies that same boundary afterward. No future window or oracle is used.
+Policy snapshots and results are persisted in the decision event and their own
+artifacts. Content SHA-256 identifies snapshots; decision IDs include snapshot ID,
+policy name, version and frozen-threshold SHA-256. Decisions record that threshold
+digest, so changing parameters cannot alias a different decision under the same
+visible snapshot. Policy version is 1.0, overall artifact schema 6.0.
+
+For research policies `experiment.request_count` is a checked **maximum workload
+budget**: validation + canary + `(max_holds+1)*evaluation` + `max_holds*hold` +
+completion. Actual execution can stop early after promotion/rollback or omit the
+completion batch after exhausted HOLD. Summary records actual scheduled
+`planned_requests` and separate `request_budget`. Legacy dummy runs retain their
+exact Phase 4A–4E request-count semantics. New research artifacts are empty for
+legacy dummy runs; prior artifact schemas require regeneration.
+
+The existing top-level `hold_count` counts entered lifecycle HOLDING cycles.
+`decision_metrics.hold_count` counts all HOLD decisions, including the one that
+exceeds the bound. Decision metrics also include promote/rollback/decision counts,
+unsafe promotions, unnecessary rollbacks and unnecessary holds. No final campaign
+statistics or publication plots are generated.
+
+## Separate post-hoc oracle and correctness
+
+The oracle is invoked after the episode, outside policy execution. It uses both
+channels and hidden realization for **every** policy, ignoring policy explanations.
+Operational criteria use current-window actual serving records; when a revision
+has no serving records, the oracle explicitly labels a configured deterministic
+backend counterfactual basis rather than fabricating requests. Behavior criteria
+use the complete configured deterministic workload/model profile for that window,
+including timed behavior faults; this remains known even if only two probes were
+observed. These modeled oracle values never enter controller evidence or inputs.
+
+UNSAFE means a known operational/behavior regression exceeds the same frozen
+comparative thresholds, or an invalid serving revision appears. SAFE means these
+criteria pass and effective deployment matches intent. INDETERMINATE means behavior
+ground truth is undefined (e.g. behavior workload disabled), or realized deployment
+is inconsistent without established harm. SAFE is a defined experiment criterion,
+not a universal claim about model quality: relative classification monitoring alone
+cannot detect common-mode poor baseline/candidate accuracy.
+
+| Truth | PROMOTE | HOLD | ROLLBACK |
+| --- | --- | --- | --- |
+| SAFE | CORRECT_PROMOTION | UNNECESSARY_HOLD | UNNECESSARY_ROLLBACK |
+| UNSAFE | UNSAFE_PROMOTION | DELAYED_ROLLBACK | CORRECT_ROLLBACK |
+| INDETERMINATE | UNSUPPORTED_PROMOTION | CORRECT_HOLD | UNSUPPORTED_ROLLBACK |
+
+Only known UNSAFE + PROMOTE is critical_error true; unsupported promotion is a
+separate category. Truth is not tailored to favor SafeRoll. Healthy-but-stale
+routing reports can make SafeRoll HOLD while AIGate correctly promotes. Stale
+healthy evidence hiding known current harm can make SafeRoll HOLD, scored as
+DELAYED_ROLLBACK. Hidden effective propagation lag with an apparently consistent
+observer can make SafeRoll promote: the boundary forbids cheating, and the oracle
+records UNSUPPORTED_PROMOTION. These outcomes are preserved, not optimized away.
+
+## Policy matrices and validation
+
+```bash
+./scripts/run_experiment.sh configs/phase4f-healthy.yaml
+./scripts/run_experiment.sh configs/phase4f-silent-behavior-regression.yaml --policy ops_gate
+./scripts/run_policy_matrix.sh configs/phase4f-silent-behavior-regression.yaml
+python3 -m saferoll.cli policy-matrix --config configs/phase4f-routing-mismatch.yaml --output-root runs
+```
+
+Policies are readiness_gate, ops_gate, behavior_gate, ai_gate and saferoll. A matrix
+runs the same scenario and thresholds against each in this fixed order and writes
+`policy_matrix.json`. Rows cover **every decision**, with decision index, policy,
+truth, correctness, critical flag, reasons, run reference and final lifecycle outcome.
+Compare decision_index 0 for initial-response smoke comparisons; later HOLD cycles
+remain visible. The eight Phase 4F configs cover healthy, silent behavior regression,
+latency regression, insufficient behavior, stale behavior, routing mismatch,
+behavior/routing compound and dropped observation. This is smoke testing, not the
+full scientific campaign.
+
+Validation reconstructs the exact allowed snapshot projection and checks all
+observation references and delivery times, boundary schemas, snapshot hashes,
+identity/window attribution, policy versions, reason enums and deterministic policy
+recomputation from persisted visible inputs. It separately recomputes oracle truth,
+correctness classifications and metrics. Existing independent system/behavior and
+three-plane validation remain intact. Tests cover exact threshold boundaries,
+capability isolation, oracle exclusion during execution, future-data filtering,
+byte determinism and deliberate snapshot/decision/oracle corruption.
+
+Phase 4G has not begun.

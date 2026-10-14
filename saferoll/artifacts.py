@@ -9,6 +9,7 @@ import platform
 import subprocess
 from typing import Any
 from .config import Config
+from .research.oracle import evaluate_decisions, decision_metrics
 from .observations import build_observations, build_fault_events
 from .behavior.workload import BEHAVIOR_SCHEMA_VERSION, build_workload
 from .behavior.evidence import collect_behavior_evidence
@@ -96,4 +97,16 @@ def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
         with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
             for record in records:
                 stream.write(canonical_json(record) + "\n")
+    inputs = [e.details["policy_input"] for e in events if e.event_type == "DECISION_MADE" and "policy_input" in e.details]
+    decisions = [e.details["policy_result"] for e in events if e.event_type == "DECISION_MADE" and "policy_result" in e.details]
+    evaluations = evaluate_decisions(config, inputs, decisions, system_windows, routing, [asdict(r) for r in responses])
+    for name, records in (("policy_inputs.jsonl", inputs), ("decisions.jsonl", decisions),
+                          ("decision_evaluations.jsonl", evaluations)):
+        with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
+            for record in records:
+                stream.write(canonical_json(record) + "\n")
+    if config.policy.type != "dummy":
+        summary["decision_metrics"] = decision_metrics(decisions, evaluations)
+        summary.update({key: summary["decision_metrics"][key] for key in
+                        ("unsafe_promotion_count", "unnecessary_rollback_count", "unnecessary_hold_count")})
     write_json(run_dir / "summary.json", summary)

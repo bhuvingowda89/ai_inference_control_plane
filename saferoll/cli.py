@@ -5,6 +5,8 @@ import json
 import sys
 from .config import load_config
 from .runner import run_experiment
+from .research.configuration import POLICY_NAMES
+from .research.matrix import with_policy, run_policy_matrix
 from .validator import validate_run
 import yaml
 
@@ -15,13 +17,24 @@ def main(argv: list[str] | None = None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--config", required=True)
     run.add_argument("--output-root", default="runs")
+    run.add_argument("--policy", choices=POLICY_NAMES)
+    matrix = commands.add_parser("policy-matrix")
+    matrix.add_argument("--config", required=True)
+    matrix.add_argument("--output-root", default="runs")
     validate = commands.add_parser("validate")
     validate.add_argument("--run-dir", required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "run":
-            path = run_experiment(load_config(args.config), args.output_root)
+            config = load_config(args.config)
+            if args.policy:
+                config = with_policy(config, args.policy)
+            path = run_experiment(config, args.output_root)
             print(json.dumps({"run_dir": str(path), "valid": True}, sort_keys=True))
+            return 0
+        if args.command == "policy-matrix":
+            path = run_policy_matrix(load_config(args.config), args.output_root)
+            print(json.dumps({"matrix_file": str(path), "valid": True}, sort_keys=True))
             return 0
         result = validate_run(args.run_dir)
         print(json.dumps(result, sort_keys=True))

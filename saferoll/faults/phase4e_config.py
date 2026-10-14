@@ -127,6 +127,8 @@ def validate_phase4e(config: Any) -> None:
     requested_holds=config.lifecycle.max_holds+1 if policy.type=='always_hold' else (
         policy.holds_before_decision if policy.type=='hold_then_promote' else 0)
     windows=3+2*min(requested_holds,config.lifecycle.max_holds)+(requested_holds<=config.lifecycle.max_holds)
+    if config.policy.type != "dummy":
+        windows=4+2*config.lifecycle.max_holds
     for f in p.observation_faults:
         if (f.type not in OBSERVATION_TYPES or f.source not in {'system','behavior'}
                 or f.target not in {'baseline','candidate'} or f.duration_windows<1

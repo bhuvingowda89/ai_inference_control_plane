@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from .artifacts import canonical_json, config_hash, write_json
 from .config import config_from_dict
+from .research.validation import validate_policy_artifacts
 from .phase4e_validation import validate_phase4e_artifacts
 from .behavior.workload import BEHAVIOR_SCHEMA_VERSION
 from .behavior.validation import validate_behavior
@@ -22,7 +23,7 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
     """Report corrupt/missing artifacts rather than crashing; persist every result."""
     root = Path(run_dir)
     issues: list[str] = []
-    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl", "behavior_workload.json", "behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl", "routing_states.jsonl", "observations.jsonl", "fault_events.jsonl"]
+    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl", "behavior_workload.json", "behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl", "routing_states.jsonl", "observations.jsonl", "fault_events.jsonl", "policy_inputs.jsonl", "decisions.jsonl", "decision_evaluations.jsonl"]
     for name in required:
         if not (root / name).is_file():
             issues.append(f"missing artifact: {name}")
@@ -44,6 +45,10 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
                                   for name in ("behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl")]
             phase_artifacts = [[json.loads(line) for line in (root / name).read_text(encoding="utf-8").splitlines()]
                                for name in ("routing_states.jsonl", "observations.jsonl", "fault_events.jsonl")]
+            policy_artifacts = [[json.loads(line) for line in (root / name).read_text(encoding="utf-8").splitlines()]
+                                for name in ("policy_inputs.jsonl", "decisions.jsonl", "decision_evaluations.jsonl")]
+            issues.extend(validate_policy_artifacts(config, *policy_artifacts, phase_artifacts[1], phase_artifacts[0],
+                                                   evidence, rows, events, summary))
             issues.extend(validate_phase4e_artifacts(config, *phase_artifacts, rows, events, evidence, behavior_artifacts[1], summary))
             issues.extend(validate_behavior(config, workload, *behavior_artifacts, evidence, events, summary))
             issues.extend(validate_system_evidence(config, evidence, rows, events))
@@ -61,7 +66,7 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
             for key in ("source_tree_sha256", "python_version", "platform", "git_revision", "git_dirty"):
                 if key not in manifest:
                     issues.append(f"manifest missing field: {key}")
-            if len(rows) != config.experiment.request_count:
+            if len(rows) != (config.experiment.request_count if config.policy.type == "dummy" else summary.get("planned_requests")):
                 issues.append("planned request count differs from rows")
             ids = [r.get("request_id") for r in rows]
             if len(set(ids)) != len(ids):
@@ -76,7 +81,9 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
             expected_rows = [{key: str(value) for key, value in asdict(r).items()} for r in expected_responses]
             if rows != expected_rows:
                 issues.append("request records differ from deterministic replay (identity/routing/fault/output/latency)")
-            if canonical_json(summary) != canonical_json(expected_summary):
+            compared_summary = {k: v for k, v in summary.items() if config.policy.type == "dummy" or
+                                k not in {"decision_metrics", "unsafe_promotion_count", "unnecessary_rollback_count", "unnecessary_hold_count"}}
+            if canonical_json(compared_summary) != canonical_json(expected_summary):
                 issues.append("summary schema/counts/metrics differ from raw deterministic records")
             event_fields = {f.name for f in fields(Event)}
             for index, event in enumerate(events):

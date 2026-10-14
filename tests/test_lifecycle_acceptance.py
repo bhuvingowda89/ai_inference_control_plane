@@ -42,7 +42,7 @@ def test_scenarios_and_determinism(tmp_path, scenario, outcome, path_states, hol
     assert summary['transition_count'] == len(transitions)
     assert summary['completed_requests'] == config.experiment.request_count
     manifest = json.loads((one / 'manifest.json').read_text())
-    assert manifest['schema_version'] == '5.0'
+    assert manifest['schema_version'] == '6.0'
     assert manifest['state_machine_version'] == '1.0'
     assert manifest['initial_state'] == 'STABLE'
     assert manifest['decision_policy_type'] == config.decision_policy.type

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, get_type_hints
 import yaml
 from .ids import RolloutIdentity
+from .research.configuration import PolicyConfig, parse_policy
 from .faults.phase4e_config import Phase4EConfig, parse_phase4e, validate_phase4e
 
 
@@ -94,6 +95,7 @@ class Config:
     evidence: EvidenceConfig = EvidenceConfig()
     behavior_evidence: BehaviorConfig = BehaviorConfig()
     phase4e: Phase4EConfig = Phase4EConfig()
+    policy: PolicyConfig = PolicyConfig()
 
     @property
     def identity(self) -> RolloutIdentity:
@@ -103,6 +105,9 @@ class Config:
     @property
     def planned_requests(self) -> int:
         l = self.lifecycle
+        if self.policy.type != "dummy":
+            return (l.validation_requests + l.canary_requests + (1 + l.max_holds) * l.evaluation_requests
+                    + l.max_holds * l.hold_requests + l.completion_requests)
         p = self.decision_policy
         desired_holds = l.max_holds + 1 if p.type == "always_hold" else (
             p.holds_before_decision if p.type == "hold_then_promote" else 0)
@@ -124,6 +129,7 @@ def config_from_dict(data: Any) -> Config:
                 "routing": RoutingConfig, "fault": FaultConfig}
     if isinstance(data, dict):
         data = dict(data)
+        research_policy = parse_policy(data.pop("policy", {}))
         phase4e = parse_phase4e(data.pop("phase4e", {}))
         behavior = data.pop("behavior_evidence", asdict(BehaviorConfig()))
         for role in ("baseline", "candidate"):
@@ -134,6 +140,7 @@ def config_from_dict(data: Any) -> Config:
         evidence = None
         behavior = None
         phase4e = Phase4EConfig()
+        research_policy = PolicyConfig()
     if isinstance(data, dict) and set(data) == set(sections):
         # Accepted Phase 4A YAML: preserve every request's canary assignment.
         data = {**data, "lifecycle": {"validation_requests": 0,
@@ -168,7 +175,7 @@ def config_from_dict(data: Any) -> Config:
                 item = float(item)
             normalized[key] = item
         resolved[section] = cls(**normalized)
-    config = Config(**resolved, phase4e=phase4e)
+    config = Config(**resolved, phase4e=phase4e, policy=research_policy)
     validate_phase4e(config)
     if config.experiment.request_count < 0 or config.rollout.epoch < 1:
         raise ValueError("request_count must be nonnegative and epoch must be positive")
