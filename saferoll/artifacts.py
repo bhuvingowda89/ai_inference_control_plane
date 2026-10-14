@@ -9,6 +9,8 @@ import platform
 import subprocess
 from typing import Any
 from .config import Config
+from .behavior.workload import BEHAVIOR_SCHEMA_VERSION, build_workload
+from .behavior.evidence import collect_behavior_evidence
 from .lifecycle import STATE_MACHINE_VERSION
 from .evidence import EVIDENCE_SCHEMA_VERSION, collect_system_evidence
 from .schemas import Event, Response, REQUEST_COLUMNS, SCHEMA_VERSION
@@ -33,7 +35,7 @@ def build_manifest(config: Config) -> dict[str, Any]:
     for path in sorted(package.rglob("*.py")):
         source.update(path.relative_to(package).as_posix().encode("utf-8") + b"\0")
         source.update(path.read_bytes() + b"\0")
-    manifest = {"schema_version": SCHEMA_VERSION, "evidence_schema_version": EVIDENCE_SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
+    manifest = {"schema_version": SCHEMA_VERSION, "behavior_schema_version": BEHAVIOR_SCHEMA_VERSION, "evidence_schema_version": EVIDENCE_SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
                 "decision_policy_type": config.decision_policy.type, "initial_state": "STABLE", "experiment_name": config.experiment.name,
                 "seed": config.experiment.seed, **asdict(config.identity),
                 "request_count": config.experiment.request_count,
@@ -72,7 +74,17 @@ def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
         for event in events:
             if event.event_type == "STATE_TRANSITION":
                 stream.write(canonical_json(event.details) + "\n")
+    system_windows = [asdict(r) for r in collect_system_evidence(config, responses, events)]
     with (run_dir / "system_evidence.jsonl").open("w", encoding="utf-8", newline="") as stream:
-        for record in collect_system_evidence(config, responses, events):
-            stream.write(canonical_json(asdict(record)) + "\n")
+        for record in system_windows:
+            stream.write(canonical_json(record) + "\n")
+    workload = build_workload(config)
+    probes = [e.details for e in events if e.event_type == "BEHAVIOR_PROBE_COMPLETED"]
+    behavior, comparisons = collect_behavior_evidence(config, workload, probes, system_windows)
+    write_json(run_dir / "behavior_workload.json", workload)
+    for name, records in (("behavior_probes.jsonl", probes), ("behavior_evidence.jsonl", behavior),
+                          ("behavior_comparisons.jsonl", comparisons)):
+        with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
+            for record in records:
+                stream.write(canonical_json(record) + "\n")
     write_json(run_dir / "summary.json", summary)

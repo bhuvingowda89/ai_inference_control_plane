@@ -26,6 +26,8 @@ class BackendConfig:
     revision: str
     fixed_latency_ms: float
     response_prefix: str
+    behavior_profile: str = "correct"
+    regression_every_nth_item: int = 4
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,19 @@ class EvidenceConfig:
 
 
 @dataclass(frozen=True)
+class BehaviorConfig:
+    enabled: bool = False
+    workload_id: str = "deterministic-parity-v1"
+    task_type: str = "classification"
+    item_count: int = 20
+    baseline_items_per_window: int = 20
+    candidate_items_per_window: int = 20
+    minimum_samples_per_revision: int = 3
+    minimum_paired_samples: int = 3
+    max_age_logical_units: int = 1000
+
+
+@dataclass(frozen=True)
 class Config:
     experiment: ExperimentConfig
     rollout: RolloutConfig
@@ -76,6 +91,7 @@ class Config:
     lifecycle: LifecycleConfig
     decision_policy: DecisionPolicyConfig
     evidence: EvidenceConfig = EvidenceConfig()
+    behavior_evidence: BehaviorConfig = BehaviorConfig()
 
     @property
     def identity(self) -> RolloutIdentity:
@@ -103,9 +119,14 @@ def config_from_dict(data: Any) -> Config:
                 "routing": RoutingConfig, "fault": FaultConfig}
     if isinstance(data, dict):
         data = dict(data)
+        behavior = data.pop("behavior_evidence", asdict(BehaviorConfig()))
+        for role in ("baseline", "candidate"):
+            if isinstance(data.get(role), dict):
+                data[role] = {"behavior_profile": "correct", "regression_every_nth_item": 4, **data[role]}
         evidence = data.pop("evidence", asdict(EvidenceConfig()))
     else:
         evidence = None
+        behavior = None
     if isinstance(data, dict) and set(data) == set(sections):
         # Accepted Phase 4A YAML: preserve every request's canary assignment.
         data = {**data, "lifecycle": {"validation_requests": 0,
@@ -115,7 +136,9 @@ def config_from_dict(data: Any) -> Config:
     sections.update(lifecycle=LifecycleConfig, decision_policy=DecisionPolicyConfig)
     if isinstance(data, dict):
         data["evidence"] = evidence
+        data["behavior_evidence"] = behavior
     sections["evidence"] = EvidenceConfig
+    sections["behavior_evidence"] = BehaviorConfig
     if not isinstance(data, dict) or set(data) != set(sections):
         raise ValueError("config requires exactly: " + ", ".join(sections))
     resolved = {}
@@ -128,6 +151,8 @@ def config_from_dict(data: Any) -> Config:
             item = value[key]
             if kind is str and (not isinstance(item, str) or not item.strip()):
                 raise ValueError(f"{section}.{key} must be a nonempty string")
+            if kind is bool and type(item) is not bool:
+                raise ValueError(f"{section}.{key} must be a boolean")
             if kind is int and type(item) is not int:
                 raise ValueError(f"{section}.{key} must be an integer")
             if kind is float:
@@ -157,6 +182,21 @@ def config_from_dict(data: Any) -> Config:
         raise ValueError("request_count must equal the deterministic lifecycle request budget")
     if config.evidence.minimum_samples_per_revision < 1 or config.evidence.max_age_logical_units < 0:
         raise ValueError("evidence minimum must be positive and maximum age nonnegative")
+    b = config.behavior_evidence
+    if b.task_type not in {"classification", "structured_output"}:
+        raise ValueError("unsupported behavior task type")
+    if (b.item_count < 1 or min(b.baseline_items_per_window, b.candidate_items_per_window) < 0
+            or max(b.baseline_items_per_window, b.candidate_items_per_window) > b.item_count
+            or min(b.minimum_samples_per_revision, b.minimum_paired_samples) < 1
+            or b.max_age_logical_units < 0):
+        raise ValueError("invalid behavior counts, sample limits or age")
+    for backend in (config.baseline, config.candidate):
+        if backend.behavior_profile not in {"correct", "classification_regression", "structured_output_regression"}:
+            raise ValueError("unsupported behavior profile")
+        if backend.regression_every_nth_item < 1:
+            raise ValueError("regression_every_nth_item must be positive")
+        if b.enabled and backend.behavior_profile != "correct" and backend.behavior_profile != b.task_type + "_regression":
+            raise ValueError("behavior profile must match enabled task type")
     fault = config.fault
     if fault.type not in {"latency", "candidate_request_failure"} or fault.target != "candidate":
         raise ValueError("only latency/candidate_request_failure with candidate target is supported")

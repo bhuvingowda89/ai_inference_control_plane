@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from .artifacts import canonical_json, config_hash, write_json
 from .config import config_from_dict
+from .behavior.workload import BEHAVIOR_SCHEMA_VERSION
+from .behavior.validation import validate_behavior
 from .runner import simulate
 from .lifecycle import STATE_MACHINE_VERSION
 from .evidence import EVIDENCE_SCHEMA_VERSION
@@ -19,7 +21,7 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
     """Report corrupt/missing artifacts rather than crashing; persist every result."""
     root = Path(run_dir)
     issues: list[str] = []
-    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl"]
+    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl", "behavior_workload.json", "behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl"]
     for name in required:
         if not (root / name).is_file():
             issues.append(f"missing artifact: {name}")
@@ -36,10 +38,14 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
             events = [json.loads(line) for line in (root / "events.jsonl").read_text(encoding="utf-8").splitlines()]
             transitions = [json.loads(line) for line in (root / "rollout_transitions.jsonl").read_text(encoding="utf-8").splitlines()]
             evidence = [json.loads(line) for line in (root / "system_evidence.jsonl").read_text(encoding="utf-8").splitlines()]
+            workload = json.loads((root / "behavior_workload.json").read_text(encoding="utf-8"))
+            behavior_artifacts = [[json.loads(line) for line in (root / name).read_text(encoding="utf-8").splitlines()]
+                                  for name in ("behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl")]
+            issues.extend(validate_behavior(config, workload, *behavior_artifacts, evidence, events, summary))
             issues.extend(validate_system_evidence(config, evidence, rows, events))
             issues.extend(validate_lifecycle(config, transitions, events, rows, summary))
             expected_responses, expected_events, expected_summary = simulate(config)
-            expected_manifest = {"schema_version": SCHEMA_VERSION, "evidence_schema_version": EVIDENCE_SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
+            expected_manifest = {"schema_version": SCHEMA_VERSION, "behavior_schema_version": BEHAVIOR_SCHEMA_VERSION, "evidence_schema_version": EVIDENCE_SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
                                  "decision_policy_type": config.decision_policy.type, "initial_state": "STABLE", "experiment_name": config.experiment.name,
                                  "seed": config.experiment.seed, **asdict(config.identity),
                                  "request_count": config.experiment.request_count, "config_sha256": config_hash(config)}

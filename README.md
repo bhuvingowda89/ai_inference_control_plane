@@ -1,16 +1,16 @@
-# SafeRoll — Phase 4C
+# SafeRoll — Phase 4D
 
 This repository is an independent deterministic research prototype for **SafeRoll:
 State-Consistent Progressive Deployment and Automated Rollback for AI Inference
 Services**. Phase 4A supplies mock inference, routing, latency injection, identity,
 artifacts and validation. Phase 4B adds control-plane lifecycle semantics. Phase 4C adds revision-attributed
 system evidence with strict lifecycle windows, sufficiency, freshness and independent
-metric validation. System evidence reports operational facts; it does not decide
+metric validation. Phase 4D adds deterministic ground-truth behavior probes and
+independently validated behavior evidence. System evidence reports operational facts; it does not decide
 whether a revision is safe.
 
 Current decision providers are **deterministic test scaffolding only**, not the
-SafeRoll research policy or scientific baselines. There are no model-behavior
-evaluators, evidence aggregation, statistical policies, real models, plots,
+SafeRoll research policy or scientific baselines. There are no SafeRoll decision policies, statistical policies, real models, plots,
 cloud services, databases, notebooks, containers or deployment integrations. No
 research performance claims are made. Execution is sequential and CPU-only.
 
@@ -34,6 +34,11 @@ python3 -m pytest -q
 ./scripts/run_experiment.sh configs/phase4c-latency-regression.yaml
 ./scripts/run_experiment.sh configs/phase4c-insufficient-evidence.yaml
 ./scripts/run_experiment.sh configs/phase4c-error-regression.yaml
+./scripts/run_experiment.sh configs/phase4d-behavior-healthy.yaml
+./scripts/run_experiment.sh configs/phase4d-classification-regression.yaml
+./scripts/run_experiment.sh configs/phase4d-structured-regression.yaml
+./scripts/run_experiment.sh configs/phase4d-insufficient-behavior.yaml
+./scripts/run_experiment.sh configs/phase4d-system-healthy-behavior-regressed.yaml
 
 python3 -m saferoll.cli run --config configs/phase4c-healthy.yaml --output-root runs
 python3 -m saferoll.cli validate --run-dir runs/<run-id>
@@ -145,7 +150,7 @@ zero validation/evaluation/hold/completion requests, `canary_requests` equal to
 `experiment.request_count`, `max_holds: 1`, and `always_promote` with zero holds.
 This preserves every Phase 4A scientific request ID, route, output, latency and
 fault assignment while adding lifecycle context. New resolved config hashes and
-schema-3.0 artifacts intentionally differ. Archived schema-1.0/2.0 run artifacts
+schema-4.0 artifacts intentionally differ. Archived schema-1.0/2.0/3.0 run artifacts
 are not upgraded in place; regenerate from their YAML config to use this validator.
 
 ## Routing, identity, faults and logical ordering
@@ -176,7 +181,7 @@ operations. Decisions have their own earlier event time. Every request records
 its current lifecycle transition index. Scientific artifacts contain no wall-clock
 timestamps or filesystem paths.
 
-## Artifacts — schema 3.0, state machine 1.0, system evidence 1.0
+## Artifacts — schema 4.0, state machine 1.0, system/behavior evidence 1.0
 
 Each run directory contains:
 
@@ -188,6 +193,10 @@ Each run directory contains:
 | `events.jsonl` | Original identity/ordering fields; adds `STATE_TRANSITION` and `DECISION_MADE` event types with structured details |
 | `rollout_transitions.jsonl` | Every initial snapshot, desired transition and observed convergence, in append order |
 | `system_evidence.jsonl` | Separate baseline/candidate operational evidence for every lifecycle request batch, including empty batches |
+| `behavior_workload.json` | Deterministic parity tasks, inputs, item IDs and ground truth |
+| `behavior_probes.jsonl` | Separate behavior requests/responses with complete revision, window and workload attribution |
+| `behavior_evidence.jsonl` | Per-revision/window objective behavior metrics, sufficiency and freshness |
+| `behavior_comparisons.jsonl` | Exact output disagreement and ground-truth metrics on paired items only |
 | `summary.json` | Phase 4A metrics and identity plus `final_lifecycle_state`, `final_outcome`, `decision_count`, `hold_count`, `transition_count` |
 | `validation.json` | Boolean `valid` and list of diagnostic `issues` |
 
@@ -228,7 +237,7 @@ byte-identical scientific request, event, lifecycle, evidence, summary, resolved
 validation files. Python/platform/Git diagnostic fields may differ. Source digest
 changes identify implementation changes; hashes are not authentication signatures.
 
-Phase 4D has not been implemented.
+Phase 4E has not been implemented.
 
 
 ## System evidence and windows
@@ -336,3 +345,145 @@ Only candidate attempts in the inclusive interval become `success: false` and
 latency field is required for this type to avoid ambiguous combined faults. Only
 one configured fault is supported per run. Failure rates emerge from request
 records; the collector contains no fault-specific aggregation path.
+
+
+## Behavior workloads and ground truth
+
+Phase 4D measures objective correctness on two simple original tasks; these are
+mechanism tests, not representative language-model benchmarks. There are no
+embeddings, external APIs, semantic judgments or LLM-as-a-judge. Behavior evidence
+and system evidence are independent channels. The evaluator never makes rollout
+decisions, and dummy policies never read its metrics.
+
+A workload item contains `workload_id`, UUID5 `item_id`, zero-based `item_index`,
+`task_type`, `input`, `expected_output`, and task-specific `expected_label` or
+`expected_structure`/`expected_values` (inapplicable fields are null). With seed S,
+item i uses integer `S+i`:
+
+* **classification:** input `{number: S+i}`; expected label `even` or `odd`.
+  Labels match exactly, with no whitespace/case normalization.
+* **structured_output:** same input; expected object `{number: S+i, parity: label}`.
+  Valid structure requires exactly those keys, integer number (not boolean or
+  float), and string parity. Exact match compares the parsed object with ground
+  truth; whitespace and JSON key order do not affect correctness. Malformed JSON,
+  duplicate keys, missing/extra keys and wrong types are invalid.
+
+Workload item IDs use canonical JSON `[workload_id, seed, task_type, item_index]`
+with the standard UUID5 URL namespace. Items intentionally remain identical
+across rollout epochs; probe request IDs include rollout, epoch, window, role and
+item ID, preventing cross-epoch evidence reuse. The workload artifact also carries
+rollout/epoch, seed, task type and behavior schema version.
+
+## Behavior configuration and profiles
+
+Legacy configs default to `behavior_evidence.enabled: false`. Behavior artifacts
+are still required: workload has an empty item list and probe/evidence/comparison
+JSONL files are empty. This preserves serving assignments and the accepted logical
+event sequence. Existing backend configs resolve to `behavior_profile: correct`
+and `regression_every_nth_item: 4`. Earlier run artifacts require regeneration;
+no artifact migration edits archived data.
+
+Explicit behavior configuration requires all fields:
+
+```yaml
+behavior_evidence:
+  enabled: true
+  workload_id: deterministic-parity-v1
+  task_type: classification
+  item_count: 20
+  baseline_items_per_window: 20
+  candidate_items_per_window: 20
+  minimum_samples_per_revision: 3
+  minimum_paired_samples: 3
+  max_age_logical_units: 1000
+```
+
+All counts are integers; workload/minimum counts are positive, per-revision limits
+are in `[0,item_count]`, and maximum age is nonnegative. Enabled is a boolean;
+unknown fields/types and profile/task mismatches are rejected. Both backend
+sections optionally specify these fields (shown for a candidate):
+
+```yaml
+candidate:
+  revision: candidate-v2
+  fixed_latency_ms: 10
+  response_prefix: candidate
+  behavior_profile: classification_regression
+  regression_every_nth_item: 4
+```
+
+Profiles are role-neutral and explicitly configured. `correct` emits ground truth.
+`classification_regression` flips the expected label for every nth **one-based**
+item ordinal. `structured_output_regression` alters the same deterministic subset,
+cycling through omitted parity field, wrong numeric value, and malformed JSON.
+The evaluator has no knowledge of profiles. Either revision may regress; identical
+incorrect profiles can have zero disagreement while both accuracies are poor.
+Serving outputs are unchanged by these profiles.
+
+## Separate paired probes and lifecycle windows
+
+At the end of each serving lifecycle batch, enabled runs probe workload items in
+ascending order, baseline then candidate for each item. Each role receives the
+configured prefix of the same workload. Probes bypass the serving router and the
+serving-index latency/error faults. They are explicitly tagged
+`request_kind: behavior_probe`, operationally successful mock attempts, and are
+excluded from requests.csv, serving summaries and system metrics. In VALIDATING,
+these are internal candidate checks. During PROMOTION or RECOVERY, isolated probes
+may still target both revisions; they do not represent serving candidate exposure.
+
+Each probe emits one `BEHAVIOR_PROBE_COMPLETED` event containing the persisted
+request/response record. All events use the shared logical clock. System-window
+closure occurs after probes and before the next transition/decision; thus probe
+collection can increase the logical age of earlier system samples. It does not
+change their latency or success. When behavior is disabled, no extra events occur.
+Behavior windows use the same UUID, state, transition index and boundaries as
+system windows, including zero-serving-request batches. VALIDATION, CANARY,
+EVALUATION, HOLD, PROMOTION and RECOVERY are supported. Repeated evaluations use
+separate windows and unique probe requests; no metrics pool samples across windows.
+
+## Behavior metrics, pairing, sufficiency and freshness
+
+Classification records expose sample/correct/incorrect counts and accuracy.
+Structured records expose valid/invalid structure counts and rate, exact-match
+count and rate. Inapplicable task metrics are null. Empty applicable counts are
+zero, but their rates are null. Metrics are independently recomputable from raw
+outputs and the persisted, independently verified ground truth.
+
+Comparison records use the item-ID intersection **within one window**. Unpaired
+items are excluded from comparison counts and comparison accuracies. Overall
+per-revision evidence still includes all samples. Agreement/disagreement compares
+exact raw output strings, including malformed output; it is not semantic drift.
+Correctness is a separate ground-truth metric. Paired accuracy/exact-match rates
+and candidate-minus-baseline differences are descriptive only. Empty pairing has
+null rates, not assumed agreement.
+
+Behavior sufficiency is `sample_count >= minimum_samples_per_revision`; paired
+sufficiency uses its own minimum. Both are independent of system sufficiency and
+make no health/safety assertion. Freshness uses closure minus latest probe logical
+time, FRESH at or below the behavior age limit, otherwise STALE. Empty evidence has
+NO_SAMPLES and null latest time/age. Closure and evaluation times coincide in this
+phase; no telemetry-delay fault is added.
+
+`behavior_evidence.jsonl` includes schema version, rollout/epoch/revision/role,
+window/state/transition/workload/task identity, ordered sample request/item IDs,
+window timing, sample/minimum counts, sufficiency, freshness and task metrics.
+`behavior_comparisons.jsonl` includes window/rollout/epoch/revisions/workload/task,
+paired item/request IDs, sample/minimum counts, paired sufficiency, agreement and
+disagreement, and paired ground-truth rates/differences. Both are ordered by window;
+per-revision records are baseline then candidate. Summary adds `behavior_windows`,
+`behavior_samples`, and `paired_behavior_samples`.
+
+The validator independently reconstructs ground truth from the seed/task definition,
+checks probe identity/expected/observed fields and event correspondence, recomputes
+classification and structured metrics through a separate implementation, checks
+paired membership, then recomputes sufficiency, freshness and summary counts.
+Deterministic event replay also verifies the configured backend outputs. Corruption
+tests include synchronized raw probes/events and deliberately broken runtime
+evaluators. Equivalent configs/seeds produce byte-identical workload, probe,
+evidence and comparison artifacts, independent of Python hash randomization.
+
+The canonical conflicting-evidence config is
+`configs/phase4d-system-healthy-behavior-regressed.yaml`: baseline latency is 12 ms,
+candidate latency 10 ms, both have zero serving errors, and the explicit candidate
+classification profile reduces accuracy. The artifact reports this conflict;
+Phase 4D does not judge safety or alter the dummy rollout decision.

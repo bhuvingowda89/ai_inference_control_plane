@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 from .artifacts import config_hash, write_artifacts
 from .backends.mock import MockBackend
+from .behavior.workload import build_workload
+from .behavior.probes import generate_probe
 from .config import Config, config_from_dict
 from .faults.base import FaultInjector
 from .faults.latency import LatencyFault
@@ -38,14 +40,16 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
     responses: list[Response] = []
     events: list[Event] = []
     identity = config.identity
+    workload = build_workload(config)
+    window_sequence = 0
 
     def emit(kind: str, request: Request | None = None, response: Response | None = None,
-             details: dict[str, Any] | None = None) -> None:
+             details: dict[str, Any] | None = None, probe: dict[str, Any] | None = None) -> None:
         record = response or request
         events.append(Event(len(events), kind, **asdict(identity),
-                            request_id=record.request_id if record else None,
-                            intended_revision=record.intended_revision if record else None,
-                            served_revision=record.served_revision if record else None,
+                            request_id=record.request_id if record else probe["request_id"] if probe else None,
+                            intended_revision=record.intended_revision if record else probe["intended_revision"] if probe else None,
+                            served_revision=record.served_revision if record else probe["served_revision"] if probe else None,
                             logical_time=len(events), details=details or {}))
 
     emit("RUN_STARTED", details={"planned_requests": config.experiment.request_count})
@@ -59,6 +63,7 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
         emit("STATE_TRANSITION", details=asdict(record))
 
     def serve(count: int) -> None:
+        nonlocal window_sequence
         snapshot = coordinator.snapshot
         router.observe_candidate_weight(snapshot.observed_candidate_weight)
         for _ in range(count):
@@ -80,6 +85,15 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
             emit("REQUEST_COMPLETED", response=response,
                  details={"success": response.success, "latency_ms": response.latency_ms,
                           "fault_active": response.fault_active, "output": response.output, **context})
+
+        if config.behavior_evidence.enabled:
+            b = config.behavior_evidence
+            for index, item in enumerate(workload["items"]):
+                for role, limit in (("baseline", b.baseline_items_per_window), ("candidate", b.candidate_items_per_window)):
+                    if index < limit:
+                        probe = generate_probe(config, snapshot, window_sequence, item, role, len(events))
+                        emit("BEHAVIOR_PROBE_COMPLETED", details=probe, probe=probe)
+        window_sequence += 1
 
     transition(S.CANDIDATE_CREATED, "candidate registered")
     transition(S.VALIDATING, "mock candidate validation started")
@@ -115,7 +129,11 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
     summary.update(final_lifecycle_state=coordinator.snapshot.observed_state.value,
                    final_outcome=coordinator.final_outcome.value,
                    decision_count=coordinator.decision_count, hold_count=coordinator.hold_count,
-                   transition_count=len(coordinator.history))
+                   transition_count=len(coordinator.history),
+                   behavior_windows=window_sequence if config.behavior_evidence.enabled else 0,
+                   behavior_samples=sum(e.event_type == "BEHAVIOR_PROBE_COMPLETED" for e in events),
+                   paired_behavior_samples=(window_sequence * min(config.behavior_evidence.baseline_items_per_window,
+                       config.behavior_evidence.candidate_items_per_window) if config.behavior_evidence.enabled else 0))
     return responses, events, summary
 
 
