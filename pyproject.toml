@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saferoll"
-version = "0.4.0"
-description = "Deterministic SafeRoll lifecycle, system and behavior evidence substrate"
+version = "0.5.0"
+description = "Deterministic SafeRoll three-plane rollout and observation experiment substrate"
 requires-python = ">=3.9"
 dependencies = ["PyYAML>=6,<7"]
 

@@ -1,6 +1,6 @@
 """Sequential deterministic scenario execution; policy-neutral lifecycle scaffolding."""
 from __future__ import annotations
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 from .artifacts import config_hash, write_artifacts
@@ -15,6 +15,8 @@ from .ids import request_id
 from .lifecycle import RolloutCoordinator, RolloutState as S
 from .policies import build_test_policy
 from .router import WeightedRouter
+from .planes import ServingPlanes
+from .containment import containment_facts
 from .schemas import Event, Request, Response, RunState
 
 
@@ -42,6 +44,9 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
     identity = config.identity
     workload = build_workload(config)
     window_sequence = 0
+    planes = ServingPlanes(config)
+    extra_faults = [(f, LatencyFault(f) if f.type == "latency" else CandidateRequestFailure(f))
+                    for f in config.phase4e.request_faults]
 
     def emit(kind: str, request: Request | None = None, response: Response | None = None,
              details: dict[str, Any] | None = None, probe: dict[str, Any] | None = None) -> None:
@@ -56,31 +61,44 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
     coordinator = RolloutCoordinator(identity, config.routing.candidate_weight,
                                      config.lifecycle.max_holds, logical_time=len(events))
     emit("STATE_TRANSITION", details=asdict(coordinator.history[-1]))
+    def capture(point: str) -> int:
+        index = planes.capture(coordinator.snapshot, len(responses), len(events), point)
+        emit("ROUTING_STATE", details=planes.records[index])
+        return index
+
+    capture("transition")
     policy = build_test_policy(config.decision_policy.type, config.decision_policy.holds_before_decision)
 
     def transition(target: S, reason: str) -> None:
         record = coordinator.transition(target, len(events), reason)
         emit("STATE_TRANSITION", details=asdict(record))
+        capture("transition")
 
     def serve(count: int) -> None:
         nonlocal window_sequence
         snapshot = coordinator.snapshot
-        router.observe_candidate_weight(snapshot.observed_candidate_weight)
         for _ in range(count):
             index = len(responses)
             for kind in fault.before_request(index):
                 emit(kind, details={"request_index": index, **asdict(config.fault)})
+            for f, injector in extra_faults:
+                for kind in injector.before_request(index):
+                    emit(kind, details={"fault_id": f.id, "request_index": index, **asdict(f)})
+            routing_index = capture("request")
+            router.observe_candidate_weight(planes.snapshot.effective_candidate_weight)
             role = router.route()
             request = Request(index, request_id(identity, index), identity.rollout_id, identity.epoch,
                               getattr(config, role).revision, None, role, f"request-{index:06d}",
                               snapshot.desired_state.value, snapshot.observed_state.value,
-                              snapshot.transition_index)
+                              snapshot.transition_index, routing_index)
             context = {"desired_rollout_state": request.desired_rollout_state,
                        "observed_rollout_state": request.observed_rollout_state,
-                       "transition_index": request.transition_index}
+                       "transition_index": request.transition_index, "routing_state_index": routing_index}
             emit("REQUEST_CREATED", request, details={"request_index": index, "payload": request.payload, **context})
             emit("REQUEST_ROUTED", request, details={"backend_role": role, **context})
             response = fault.modify_response(backends[role].infer(request))
+            for _, injector in extra_faults:
+                response = injector.modify_response(response)
             responses.append(response)
             emit("REQUEST_COMPLETED", response=response,
                  details={"success": response.success, "latency_ms": response.latency_ms,
@@ -91,7 +109,12 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
             for index, item in enumerate(workload["items"]):
                 for role, limit in (("baseline", b.baseline_items_per_window), ("candidate", b.candidate_items_per_window)):
                     if index < limit:
-                        probe = generate_probe(config, snapshot, window_sequence, item, role, len(events))
+                        probe_config = config
+                        for f in config.phase4e.behavior_faults:
+                            if f.target == role and f.start_window <= window_sequence < f.start_window + f.duration_windows:
+                                probe_config = replace(probe_config, **{role: replace(getattr(probe_config, role),
+                                    behavior_profile=f.type, regression_every_nth_item=f.every_nth_item)})
+                        probe = generate_probe(probe_config, snapshot, window_sequence, item, role, len(events))
                         emit("BEHAVIOR_PROBE_COMPLETED", details=probe, probe=probe)
         window_sequence += 1
 
@@ -110,6 +133,7 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
                                       "transition_index": coordinator.snapshot.transition_index})
         record = coordinator.apply_decision(decision, len(events), "deterministic test provider decision")
         emit("STATE_TRANSITION", details=asdict(record))
+        capture("transition")
         evaluation_index += 1
         if coordinator.snapshot.observed_state == S.HOLDING:
             serve(config.lifecycle.hold_requests)
@@ -123,6 +147,9 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
             transition(S.COMPLETED, "simulated recovery verified")
     for kind in fault.finish():
         emit(kind, details={"request_index": len(responses), **asdict(config.fault)})
+    for f, injector in extra_faults:
+        for kind in injector.finish():
+            emit(kind, details={"fault_id": f.id, "request_index": len(responses), **asdict(f)})
     emit("RUN_COMPLETED", details={"completed_requests": len(responses),
                                    "final_outcome": coordinator.final_outcome.value})
     summary = summarize(config, responses)
@@ -134,6 +161,7 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
                    behavior_samples=sum(e.event_type == "BEHAVIOR_PROBE_COMPLETED" for e in events),
                    paired_behavior_samples=(window_sequence * min(config.behavior_evidence.baseline_items_per_window,
                        config.behavior_evidence.candidate_items_per_window) if config.behavior_evidence.enabled else 0))
+    summary.update(containment_facts([asdict(e) for e in events], planes.records))
     return responses, events, summary
 
 

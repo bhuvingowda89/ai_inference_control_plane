@@ -20,7 +20,7 @@ class MockBackend:
                         request.epoch, request.intended_revision, self.config.revision,
                         self.role, True, self.config.fixed_latency_ms, False,
                         f"{self.config.response_prefix}:{request.payload}", request.desired_rollout_state,
-                        request.observed_rollout_state, request.transition_index)
+                        request.observed_rollout_state, request.transition_index, request.routing_state_index)
 
     def infer_behavior(self, item: dict[str, Any]) -> str:
         """Explicit profiles alter only behavior probes; ordinary serving is unchanged."""

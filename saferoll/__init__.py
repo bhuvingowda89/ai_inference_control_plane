@@ -1,2 +1,2 @@
-"""SafeRoll Phases 4A–4D: deterministic lifecycle, system and behavior evidence infrastructure."""
+"""SafeRoll Phases 4A–4E: deterministic rollout, evidence and observation infrastructure."""
 from __future__ import annotations

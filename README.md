@@ -1,4 +1,4 @@
-# SafeRoll — Phase 4D
+# SafeRoll — Phase 4E
 
 This repository is an independent deterministic research prototype for **SafeRoll:
 State-Consistent Progressive Deployment and Automated Rollback for AI Inference
@@ -6,7 +6,8 @@ Services**. Phase 4A supplies mock inference, routing, latency injection, identi
 artifacts and validation. Phase 4B adds control-plane lifecycle semantics. Phase 4C adds revision-attributed
 system evidence with strict lifecycle windows, sufficiency, freshness and independent
 metric validation. Phase 4D adds deterministic ground-truth behavior probes and
-independently validated behavior evidence. System evidence reports operational facts; it does not decide
+independently validated behavior evidence. Phase 4E adds three-plane routing and
+controller-observation fault views. System evidence reports operational facts; it does not decide
 whether a revision is safe.
 
 Current decision providers are **deterministic test scaffolding only**, not the
@@ -150,7 +151,7 @@ zero validation/evaluation/hold/completion requests, `canary_requests` equal to
 `experiment.request_count`, `max_holds: 1`, and `always_promote` with zero holds.
 This preserves every Phase 4A scientific request ID, route, output, latency and
 fault assignment while adding lifecycle context. New resolved config hashes and
-schema-4.0 artifacts intentionally differ. Archived schema-1.0/2.0/3.0 run artifacts
+schema-5.0 artifacts intentionally differ. Archived schema-1.0/2.0/3.0/4.0 run artifacts
 are not upgraded in place; regenerate from their YAML config to use this validator.
 
 ## Routing, identity, faults and logical ordering
@@ -181,7 +182,7 @@ operations. Decisions have their own earlier event time. Every request records
 its current lifecycle transition index. Scientific artifacts contain no wall-clock
 timestamps or filesystem paths.
 
-## Artifacts — schema 4.0, state machine 1.0, system/behavior evidence 1.0
+## Artifacts — schema 5.0, state machine 1.0, system/behavior evidence 1.0
 
 Each run directory contains:
 
@@ -197,6 +198,9 @@ Each run directory contains:
 | `behavior_probes.jsonl` | Separate behavior requests/responses with complete revision, window and workload attribution |
 | `behavior_evidence.jsonl` | Per-revision/window objective behavior metrics, sufficiency and freshness |
 | `behavior_comparisons.jsonl` | Exact output disagreement and ground-truth metrics on paired items only |
+| `routing_states.jsonl` | Explicit desired, observed and effective state/weights, with request routing references |
+| `observations.jsonl` | Controller-visible evidence/routing envelopes, source references, ages and fault status |
+| `fault_events.jsonl` | Ordered FAULT_ACTIVATED/FAULT_CLEARED records with distinct IDs and configured parameters |
 | `summary.json` | Phase 4A metrics and identity plus `final_lifecycle_state`, `final_outcome`, `decision_count`, `hold_count`, `transition_count` |
 | `validation.json` | Boolean `valid` and list of diagnostic `issues` |
 
@@ -237,7 +241,7 @@ byte-identical scientific request, event, lifecycle, evidence, summary, resolved
 validation files. Python/platform/Git diagnostic fields may differ. Source digest
 changes identify implementation changes; hashes are not authentication signatures.
 
-Phase 4E has not been implemented.
+Phase 4F has not been implemented.
 
 
 ## System evidence and windows
@@ -487,3 +491,173 @@ The canonical conflicting-evidence config is
 candidate latency 10 ms, both have zero serving errors, and the explicit candidate
 classification profile reduces accuracy. The artifact reports this conflict;
 Phase 4D does not judge safety or alter the dummy rollout decision.
+
+
+## Phase 4E: three planes and controller observations
+
+The command lifecycle remains the accepted policy-neutral state graph. A separate
+`ServingPlanes` model supplies immutable three-plane snapshots:
+
+* desired state/weights: the commanded deployment intent;
+* observed state/weights: the observer's report, which may be stale or incorrect;
+* effective state/weights: the routing/deployment state actually serving requests.
+
+Each plane has independent baseline/candidate weights that sum to 1. Without
+faults all planes converge. Actual serving uses the effective candidate weight
+with the existing seeded RNG; changing planes never resets that RNG. Requests add
+only `routing_state_index`, pointing to the full routing snapshot. Existing desired/
+observed lifecycle columns retain their **command-window context** for evidence
+attribution. They do not claim to measure physical state under faults: use the
+routing reference for actual three-plane state. The dummy command coordinator
+still drives the scripted lifecycle; future SafeRoll policies will consume the
+faultable observer view. Dummy policies have not changed.
+
+Routing snapshots are emitted as ROUTING_STATE events at each command transition
+and before each request. They record all plane states/weights, rollout/epoch and
+revisions, transition/request indices, active fault IDs/types, and independently
+checked desired-observed, desired-effective and observed-effective match flags.
+Lifecycle windows still close at the next decision/transition and retain strict
+request attribution even when the physical plane differs from command intent.
+
+## Phase 4E configuration
+
+Existing configs default to an empty, disabled `phase4e` section. The new artifacts
+are emitted for all schema-5.0 runs. Previous artifact schemas must be regenerated;
+archived files are never edited. A concise runnable example is:
+
+```yaml
+phase4e:
+  enabled: true
+  evaluation_candidate_weight: 0.50
+  routing_faults:
+    - id: route-delay-1
+      type: routing_propagation_delay
+      target: candidate
+      start_state: EVALUATING
+      duration_requests: 10
+```
+
+In this example configure normal canary weight 0.20: EVALUATING requests 0.50, the
+observer acknowledges 0.50, and effective routing retains 0.20 for ten serving
+requests. The optional evaluation weight also applies during HOLDING. It does not
+change the lifecycle graph. Fault durations count **serving attempts**, not probes.
+Activation happens on the first matching state; the interval is half-open from
+activation request index through `start + duration_requests`. An unmet activation
+condition remains inactive. At expiry the relevant plane converges to current
+intent; state changes during a delay do not erase the fault.
+
+Every fault has a unique nonempty ID, type, target, start condition, duration/bounds
+and parameters. IDs are unique across every list; `legacy-request-fault` is reserved
+for the accepted single request fault. Missing optional fields resolve explicitly;
+unknown fields/types, invalid durations/weights/sources and duplicate IDs fail.
+Per-window fault starts must reference an existing planned window. The supported
+lists and operations are:
+
+| List/type | Semantics |
+| --- | --- |
+| `routing_faults`: `routing_propagation_delay` | Hold previous effective state/weight |
+| `stale_observed_routing` | Hold previous observed state/weight; effective routing changes normally |
+| `incorrect_observed_routing` | Report configured `candidate_weight` and optional `reported_state`; no history lookup |
+| `partial_rollout` | Use configured effective fraction, at most requested exposure |
+| `rollback_propagation_delay` | Hold pre-rollback effective exposure despite desired zero |
+| `partial_rollback` | Retain configured residual exposure, at most pre-rollback effective exposure |
+| `rollback_observation_mismatch` | Restore effective baseline routing while observer retains prior exposure |
+| `observation_faults`: `observation_delay` | Deliver evidence at closure plus `delay_logical_units` |
+| `observation_drop` | Explicit unavailable envelope; every `drop_every_nth_record` scoped window is dropped |
+| `stale_evidence` | Use `source_window` from earlier history of the same channel/role |
+| `misattribution` | Alter reported revision/epoch in a copied payload only |
+| `behavior_faults` | Window-scoped classification/structured-output profile override |
+| `request_faults` | Additional latency/failure intervals using the accepted generic response interface |
+
+Recovery routing faults must start at ROLLING_BACK. Routing targets are candidate;
+observation/behavior targets can be baseline or candidate. Observation source is
+system or behavior. Window scopes use `start_window` plus `duration_windows`.
+Behavior faults add `every_nth_item`. Request faults use inclusive request bounds
+and `added_latency_ms`. Only existing behavior tasks and profiles are supported.
+No metric threshold or evidence-driven decision is added.
+
+## Ground truth versus controller views
+
+System/behavior evidence remains ground truth. The adapter deep-copies source
+records and emits a separate controller envelope with observation ID/index,
+rollout/epoch, logical delivery time, source window/revision, actual and expected
+current ground-truth references, observed value, availability, status, independent
+view age and active fault IDs/types. References identify artifact, record index,
+rollout/epoch/window/revision. Routing observations report the observed plane.
+
+Statuses are FRESH, STALE, DELAYED, DROPPED, MISMATCHED and NO_SAMPLES. Stale views
+explicitly reference an earlier same-epoch source while preserving a reference to
+the current expected record. Delay changes delivery time and view age, not the
+original record. Delayed deliveries can extend beyond serving-run completion;
+`controller_view_at(observations, t)` filters out future deliveries. Dropped views
+retain valid source metadata with null payload and `available: false`.
+Misattribution envelopes intentionally carry misleading payload identity, while
+their actual source references and envelope rollout/epoch remain valid. The
+validator accepts configured misleading views and rejects changed ground-truth
+identity. Observation-only faults do not add events to the serving clock and leave
+scientific ground-truth artifacts byte-identical.
+
+## Compound order and fault event history
+
+All fault lists normalize to ascending ID before hashing/execution. Response
+faults apply after the legacy request fault, in ID order. Routing transforms apply
+in ID order, independently updating effective or observed planes; later overlapping
+transforms override earlier values. Window behavior overrides apply in ID order.
+Observer transforms apply in ID order; delays add, stale source selection and
+misattribution compose, and drop is absorbing so later transforms cannot resurrect
+an unavailable record. No order depends on dictionary insertion or registration.
+
+`fault_events.jsonl` combines all domains, including the legacy request fault.
+Activation/clearing uses explicit event types, identities, parameters and logical
+points. Overlay events share the corresponding command/window clock point without
+changing ground truth. Ties are ordered by `(logical_time, clear-before-activate,
+fault_id)` and a contiguous fault-event index. Observation records use
+`(logical_time, observation_id)` with a contiguous observation index. These are
+explicit deterministic views of the same logical operations. Faults still active
+at termination get a run-end clear record, which **does not assert physical
+convergence** or add fictitious requests.
+
+## Physical containment facts
+
+Summary records `rollback_decision_time`, `rollback_requested_time` (also its
+`_logical_time` alias), `effective_zero_candidate_time` (also
+`effective_candidate_zero_logical_time`), global last candidate serving time,
+`last_post_rollback_candidate_time`, final effective state/weight, and
+`effective_contained`. Probe requests are excluded from serving/containment facts.
+Effective zero is the first zero-routing snapshot after the last nonzero snapshot
+in recorded post-rollback history; it therefore means containment throughout the
+remaining **recorded horizon**, not a guarantee about unobserved future time.
+Without convergence the zero time is null and effective_contained is false.
+Nominal ROLLED_BACK command outcome can coexist with residual effective exposure;
+it is not a physical-containment claim. Post-rollback requests and their routing
+references preserve the raw facts for later harmful-exposure analysis.
+
+## Phase 4E smoke campaigns and validation
+
+```bash
+./scripts/run_experiment.sh configs/phase4e-routing-delay.yaml
+./scripts/run_experiment.sh configs/phase4e-stale-behavior-observation.yaml
+./scripts/run_experiment.sh configs/phase4e-dropped-system-observation.yaml
+./scripts/run_experiment.sh configs/phase4e-rollback-delay.yaml
+./scripts/run_experiment.sh configs/phase4e-compound-behavior-stale.yaml
+./scripts/run_experiment.sh configs/phase4e-compound-routing-latency.yaml
+./scripts/run_experiment.sh configs/phase4e-compound-behavior-rollback-delay.yaml
+python3 -m pytest -q
+```
+
+The additional seventh smoke exercises behavior regression plus rollback delay.
+The stale scenarios use an earlier perfect candidate window and a later .75
+accuracy window; the controller view remains the earlier healthy result. Dropped
+system observations coexist with complete latency-regression ground truth. No
+scenario changes the dummy decisions or claims SafeRoll effectiveness.
+
+Validation retains all independent system/behavior metric checks. It additionally
+checks plane weights/enums/identities and match flags, seeded effective assignments,
+request routing references, source history and cross-epoch isolation, configured
+observer transformations, deterministic fault event ordering, and independently
+reconciles containment facts from raw serving requests and routing history.
+Negative tests corrupt references, plane weights, observation identity/status,
+fault events, containment facts and immutable ground truth. All valid observer
+faults remain valid scientific runs.
+
+Phase 4E still does not implement the final SafeRoll policy. Phase 4F is not started.

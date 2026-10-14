@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, get_type_hints
 import yaml
 from .ids import RolloutIdentity
+from .faults.phase4e_config import Phase4EConfig, parse_phase4e, validate_phase4e
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class Config:
     decision_policy: DecisionPolicyConfig
     evidence: EvidenceConfig = EvidenceConfig()
     behavior_evidence: BehaviorConfig = BehaviorConfig()
+    phase4e: Phase4EConfig = Phase4EConfig()
 
     @property
     def identity(self) -> RolloutIdentity:
@@ -109,7 +111,10 @@ class Config:
                 + holds * l.hold_requests + (l.completion_requests if desired_holds <= l.max_holds else 0))
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        for name in ("routing_faults", "observation_faults", "behavior_faults", "request_faults"):
+            data["phase4e"][name] = list(data["phase4e"][name])
+        return data
 
 
 def config_from_dict(data: Any) -> Config:
@@ -119,6 +124,7 @@ def config_from_dict(data: Any) -> Config:
                 "routing": RoutingConfig, "fault": FaultConfig}
     if isinstance(data, dict):
         data = dict(data)
+        phase4e = parse_phase4e(data.pop("phase4e", {}))
         behavior = data.pop("behavior_evidence", asdict(BehaviorConfig()))
         for role in ("baseline", "candidate"):
             if isinstance(data.get(role), dict):
@@ -127,6 +133,7 @@ def config_from_dict(data: Any) -> Config:
     else:
         evidence = None
         behavior = None
+        phase4e = Phase4EConfig()
     if isinstance(data, dict) and set(data) == set(sections):
         # Accepted Phase 4A YAML: preserve every request's canary assignment.
         data = {**data, "lifecycle": {"validation_requests": 0,
@@ -161,7 +168,8 @@ def config_from_dict(data: Any) -> Config:
                 item = float(item)
             normalized[key] = item
         resolved[section] = cls(**normalized)
-    config = Config(**resolved)
+    config = Config(**resolved, phase4e=phase4e)
+    validate_phase4e(config)
     if config.experiment.request_count < 0 or config.rollout.epoch < 1:
         raise ValueError("request_count must be nonnegative and epoch must be positive")
     if config.baseline.revision == config.candidate.revision:

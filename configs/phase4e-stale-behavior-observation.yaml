@@ -1,0 +1,67 @@
+experiment:
+  name: phase4e-stale-behavior-observation
+  seed: 101
+  request_count: 70
+rollout:
+  rollout_id: phase4e-stale-behavior-observation-rollout
+  epoch: 1
+baseline:
+  revision: baseline-v1
+  fixed_latency_ms: 10
+  response_prefix: baseline
+  behavior_profile: correct
+  regression_every_nth_item: 4
+candidate:
+  revision: candidate-v2
+  fixed_latency_ms: 12
+  response_prefix: candidate
+  behavior_profile: correct
+  regression_every_nth_item: 4
+routing:
+  baseline_weight: 0.5
+  candidate_weight: 0.5
+fault:
+  type: latency
+  target: candidate
+  start_request: 5
+  end_request: 44
+  added_latency_ms: 0
+lifecycle:
+  validation_requests: 5
+  canary_requests: 40
+  evaluation_requests: 20
+  hold_requests: 3
+  completion_requests: 5
+  max_holds: 2
+decision_policy:
+  type: always_promote
+  holds_before_decision: 0
+evidence:
+  minimum_samples_per_revision: 3
+  max_age_logical_units: 1000
+behavior_evidence:
+  enabled: true
+  workload_id: deterministic-parity-v1
+  task_type: classification
+  item_count: 20
+  baseline_items_per_window: 20
+  candidate_items_per_window: 20
+  minimum_samples_per_revision: 3
+  minimum_paired_samples: 3
+  max_age_logical_units: 1000
+phase4e:
+  enabled: true
+  behavior_faults:
+  - id: behavior-regression-1
+    type: classification_regression
+    target: candidate
+    start_window: 1
+    duration_windows: 2
+  observation_faults:
+  - id: stale-behavior-1
+    type: stale_evidence
+    source: behavior
+    target: candidate
+    start_window: 2
+    duration_windows: 1
+    source_window: 0

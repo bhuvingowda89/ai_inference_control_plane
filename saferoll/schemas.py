@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import Any
 
-SCHEMA_VERSION = "4.0"
+SCHEMA_VERSION = "5.0"
 EVENT_TYPES = {"RUN_STARTED", "REQUEST_CREATED", "REQUEST_ROUTED", "FAULT_ACTIVATED",
-               "FAULT_CLEARED", "REQUEST_COMPLETED", "RUN_COMPLETED", "STATE_TRANSITION", "DECISION_MADE", "BEHAVIOR_PROBE_COMPLETED"}
+               "FAULT_CLEARED", "REQUEST_COMPLETED", "RUN_COMPLETED", "STATE_TRANSITION", "DECISION_MADE", "BEHAVIOR_PROBE_COMPLETED", "ROUTING_STATE"}
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class Request:
     desired_rollout_state: str = "CANARY"
     observed_rollout_state: str = "CANARY"
     transition_index: int = 0
+    routing_state_index: int = -1
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class Response:
     desired_rollout_state: str = "CANARY"
     observed_rollout_state: str = "CANARY"
     transition_index: int = 0
+    routing_state_index: int = -1
 
 
 @dataclass(frozen=True)

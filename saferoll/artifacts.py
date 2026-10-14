@@ -9,6 +9,7 @@ import platform
 import subprocess
 from typing import Any
 from .config import Config
+from .observations import build_observations, build_fault_events
 from .behavior.workload import BEHAVIOR_SCHEMA_VERSION, build_workload
 from .behavior.evidence import collect_behavior_evidence
 from .lifecycle import STATE_MACHINE_VERSION
@@ -84,6 +85,14 @@ def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
     write_json(run_dir / "behavior_workload.json", workload)
     for name, records in (("behavior_probes.jsonl", probes), ("behavior_evidence.jsonl", behavior),
                           ("behavior_comparisons.jsonl", comparisons)):
+        with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
+            for record in records:
+                stream.write(canonical_json(record) + "\n")
+    routing = [e.details for e in events if e.event_type == "ROUTING_STATE"]
+    observations = build_observations(config, system_windows, behavior, routing)
+    fault_events = build_fault_events(config, routing, system_windows, [asdict(e) for e in events])
+    for name, records in (("routing_states.jsonl", routing), ("observations.jsonl", observations),
+                          ("fault_events.jsonl", fault_events)):
         with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
             for record in records:
                 stream.write(canonical_json(record) + "\n")

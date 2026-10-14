@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from .artifacts import canonical_json, config_hash, write_json
 from .config import config_from_dict
+from .phase4e_validation import validate_phase4e_artifacts
 from .behavior.workload import BEHAVIOR_SCHEMA_VERSION
 from .behavior.validation import validate_behavior
 from .runner import simulate
@@ -21,7 +22,7 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
     """Report corrupt/missing artifacts rather than crashing; persist every result."""
     root = Path(run_dir)
     issues: list[str] = []
-    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl", "behavior_workload.json", "behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl"]
+    required = ["manifest.json", "config.resolved.json", "requests.csv", "events.jsonl", "summary.json", "rollout_transitions.jsonl", "system_evidence.jsonl", "behavior_workload.json", "behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl", "routing_states.jsonl", "observations.jsonl", "fault_events.jsonl"]
     for name in required:
         if not (root / name).is_file():
             issues.append(f"missing artifact: {name}")
@@ -41,6 +42,9 @@ def validate_run(run_dir: str | Path) -> dict[str, Any]:
             workload = json.loads((root / "behavior_workload.json").read_text(encoding="utf-8"))
             behavior_artifacts = [[json.loads(line) for line in (root / name).read_text(encoding="utf-8").splitlines()]
                                   for name in ("behavior_probes.jsonl", "behavior_evidence.jsonl", "behavior_comparisons.jsonl")]
+            phase_artifacts = [[json.loads(line) for line in (root / name).read_text(encoding="utf-8").splitlines()]
+                               for name in ("routing_states.jsonl", "observations.jsonl", "fault_events.jsonl")]
+            issues.extend(validate_phase4e_artifacts(config, *phase_artifacts, rows, events, evidence, behavior_artifacts[1], summary))
             issues.extend(validate_behavior(config, workload, *behavior_artifacts, evidence, events, summary))
             issues.extend(validate_system_evidence(config, evidence, rows, events))
             issues.extend(validate_lifecycle(config, transitions, events, rows, summary))
