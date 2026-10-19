@@ -26,8 +26,10 @@ def build_workload(config: Config) -> dict[str, Any]:
         label = "even" if number % 2 == 0 else "odd"
         structured = b.task_type == "structured_output"
         values = {"number": number, "parity": label}
+        real = config.baseline.backend_type == "llama_cpp"
+        item_input = {"number": number, "text": f"Record {number} has parity {label}."} if real else {"number": number}
         items.append({"workload_id": b.workload_id, "item_id": item_id(b.workload_id, config.experiment.seed, b.task_type, index),
-                      "item_index": index, "task_type": b.task_type, "input": {"number": number},
+                      "item_index": index, "task_type": b.task_type, "input": item_input,
                       "expected_output": values if structured else label,
                       "expected_label": None if structured else label,
                       "expected_structure": {"number": "integer", "parity": "string"} if structured else None,

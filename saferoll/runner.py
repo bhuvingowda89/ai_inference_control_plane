@@ -11,6 +11,7 @@ from .config import Config, config_from_dict
 from .faults.base import FaultInjector
 from .faults.latency import LatencyFault
 from .faults.failure import CandidateRequestFailure
+from .faults.base import NoFault
 from .ids import request_id
 from .lifecycle import RolloutCoordinator, RolloutState as S
 from .policies import build_test_policy
@@ -35,10 +36,17 @@ def summarize(config: Config, responses: list[Response]) -> dict[str, Any]:
             "mean_candidate_latency_ms": sum(r.latency_ms for r in candidate) / len(candidate) if candidate else None}
 
 
-def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any]]:
+def simulate(config: Config, real_session: Any | None = None) -> tuple[list[Response], list[Event], dict[str, Any]]:
     router = WeightedRouter(config.routing, config.experiment.seed)
-    backends = {role: MockBackend(role, getattr(config, role)) for role in ("baseline", "candidate")}
-    fault: FaultInjector = (LatencyFault(config.fault) if config.fault.type == "latency"
+    if config.baseline.backend_type == "llama_cpp":
+        if real_session is None:
+            raise ValueError("real inference requires an owned llama.cpp session")
+        from .backends.llama_cpp import LlamaCppBackend
+        backends = {role: LlamaCppBackend(role, config, real_session) for role in ("baseline", "candidate")}
+    else:
+        backends = {role: MockBackend(role, getattr(config, role)) for role in ("baseline", "candidate")}
+    fault: FaultInjector = (NoFault() if real_session is not None else
+                            LatencyFault(config.fault) if config.fault.type == "latency"
                             else CandidateRequestFailure(config.fault))
     responses: list[Response] = []
     events: list[Event] = []
@@ -88,8 +96,14 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
             routing_index = capture("request")
             router.observe_candidate_weight(planes.snapshot.effective_candidate_weight)
             role = router.route()
+            payload = f"request-{index:06d}"
+            if real_session is not None:
+                from .behavior.real import serving_prompt
+                payload = serving_prompt(config.experiment.seed, index,
+                                         config.behavior_evidence.task_type,
+                                         getattr(config, role).prompt_variant)
             request = Request(index, request_id(identity, index), identity.rollout_id, identity.epoch,
-                              getattr(config, role).revision, None, role, f"request-{index:06d}",
+                              getattr(config, role).revision, None, role, payload,
                               snapshot.desired_state.value, snapshot.observed_state.value,
                               snapshot.transition_index, routing_index)
             context = {"desired_rollout_state": request.desired_rollout_state,
@@ -115,12 +129,13 @@ def simulate(config: Config) -> tuple[list[Response], list[Event], dict[str, Any
                             if f.target == role and f.start_window <= window_sequence < f.start_window + f.duration_windows:
                                 probe_config = replace(probe_config, **{role: replace(getattr(probe_config, role),
                                     behavior_profile=f.type, regression_every_nth_item=f.every_nth_item)})
-                        probe = generate_probe(probe_config, snapshot, window_sequence, item, role, len(events))
+                        probe = generate_probe(probe_config, snapshot, window_sequence, item, role, len(events),
+                                               backends[role] if real_session is not None else None)
                         emit("BEHAVIOR_PROBE_COMPLETED", details=probe, probe=probe)
         window_sequence += 1
 
     transition(S.CANDIDATE_CREATED, "candidate registered")
-    transition(S.VALIDATING, "mock candidate validation started")
+    transition(S.VALIDATING, "candidate validation started")
     serve(config.lifecycle.validation_requests)
     transition(S.CANARY, "validation completed; canary enabled")
     serve(config.lifecycle.canary_requests)
@@ -189,8 +204,21 @@ def run_experiment(config: Config, output_root: str | Path = "runs") -> Path:
     while run_dir.exists():
         run_dir = root / f"{stem}-{suffix:03d}"
         suffix += 1
-    responses, events, summary = simulate(config)
-    write_artifacts(run_dir, config, responses, events, summary)
+    if config.baseline.backend_type == "llama_cpp":
+        from .backends.llama_cpp import LlamaCppSession, BackendFailure
+        try:
+            with LlamaCppSession(config, run_dir) as session:
+                responses, events, summary = simulate(config, session)
+            write_artifacts(run_dir, config, responses, events, summary, real_provenance=session.provenance())
+        except (BackendFailure, OSError, ValueError) as error:
+            if run_dir.is_dir():
+                from .artifacts import write_json
+                write_json(run_dir / "validation.json", {"valid": False,
+                    "issues": [f"real backend/harness failure: {error}"]})
+            raise
+    else:
+        responses, events, summary = simulate(config)
+        write_artifacts(run_dir, config, responses, events, summary)
     result = validate_run(run_dir)
     if not result["valid"]:
         raise ValueError(f"generated run failed validation: {result['issues']}")

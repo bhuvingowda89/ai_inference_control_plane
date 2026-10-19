@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "saferoll"
-version = "0.6.0"
-description = "Deterministic SafeRoll rollout policies and experimental decision evaluation"
+version = "0.7.0"
+description = "SafeRoll rollout experiments with deterministic mock and measured CPU inference"
 requires-python = ">=3.9"
 dependencies = ["PyYAML>=6,<7"]
 
@@ -17,3 +17,5 @@ include = ["saferoll*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["-m", "not real_backend"]
+markers = ["real_backend: requires pinned GGUF model, llama-server and local socket access"]

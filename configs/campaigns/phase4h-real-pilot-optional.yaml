@@ -1,0 +1,20 @@
+campaign:
+  id: phase4h-real-pilot-optional
+  seed_base: 2000
+  repetitions: 1
+scenarios:
+  - id: real_healthy
+    version: "1.0"
+    template: configs/phase4g-real-healthy.yaml
+    fault_domains: [NONE]
+    ground_truth_intent: SAFE
+    expected_condition: pinned GGUF healthy serving revision
+    backend: REAL_CPU
+  - id: real_behavior_regression
+    version: "1.0"
+    template: configs/phase4g-real-behavior-regression.yaml
+    fault_domains: [BEHAVIOR]
+    ground_truth_intent: UNSAFE
+    expected_condition: pinned GGUF weakened structured-output serving revision
+    backend: REAL_CPU
+policies: [ops_gate, saferoll]

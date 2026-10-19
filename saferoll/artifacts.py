@@ -38,6 +38,8 @@ def build_manifest(config: Config) -> dict[str, Any]:
         source.update(path.relative_to(package).as_posix().encode("utf-8") + b"\0")
         source.update(path.read_bytes() + b"\0")
     manifest = {"schema_version": SCHEMA_VERSION, "behavior_schema_version": BEHAVIOR_SCHEMA_VERSION, "evidence_schema_version": EVIDENCE_SCHEMA_VERSION, "state_machine_version": STATE_MACHINE_VERSION,
+                "backend_type": config.baseline.backend_type,
+                "timing_mode": "MEASURED" if config.baseline.backend_type == "llama_cpp" else "SIMULATED",
                 "decision_policy_type": config.decision_policy.type, "initial_state": "STABLE", "experiment_name": config.experiment.name,
                 "seed": config.experiment.seed, **asdict(config.identity),
                 "request_count": config.experiment.request_count,
@@ -60,9 +62,13 @@ def build_manifest(config: Config) -> dict[str, Any]:
 
 
 def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
-                    events: list[Event], summary: dict[str, Any]) -> None:
+                    events: list[Event], summary: dict[str, Any],
+                    real_provenance: dict[str, Any] | None = None) -> None:
     """Write only to a new directory; never overwrite an earlier experiment."""
-    run_dir.mkdir(parents=True, exist_ok=False)
+    if real_provenance is None:
+        run_dir.mkdir(parents=True, exist_ok=False)
+    elif not run_dir.is_dir() or not (run_dir / "preflight.json").is_file():
+        raise ValueError("real run requires completed preflight")
     write_json(run_dir / "manifest.json", build_manifest(config))
     write_json(run_dir / "config.resolved.json", config.to_dict())
     with (run_dir / "requests.csv").open("w", encoding="utf-8", newline="") as stream:
@@ -99,7 +105,8 @@ def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
                 stream.write(canonical_json(record) + "\n")
     inputs = [e.details["policy_input"] for e in events if e.event_type == "DECISION_MADE" and "policy_input" in e.details]
     decisions = [e.details["policy_result"] for e in events if e.event_type == "DECISION_MADE" and "policy_result" in e.details]
-    evaluations = evaluate_decisions(config, inputs, decisions, system_windows, routing, [asdict(r) for r in responses])
+    evaluations = evaluate_decisions(config, inputs, decisions, system_windows, routing,
+                                     [asdict(r) for r in responses], probes=probes)
     for name, records in (("policy_inputs.jsonl", inputs), ("decisions.jsonl", decisions),
                           ("decision_evaluations.jsonl", evaluations)):
         with (run_dir / name).open("w", encoding="utf-8", newline="") as stream:
@@ -110,3 +117,18 @@ def write_artifacts(run_dir: Path, config: Config, responses: list[Response],
         summary.update({key: summary["decision_metrics"][key] for key in
                         ("unsafe_promotion_count", "unnecessary_rollback_count", "unnecessary_hold_count")})
     write_json(run_dir / "summary.json", summary)
+    if real_provenance is not None:
+        from .behavior.real import prompt_template_sha256
+        from .backends.llama_cpp import sha256_file
+        write_json(run_dir / "backend_runs.jsonl", real_provenance)
+        write_json(run_dir / "real_provenance.json", {
+            "model_sha256": real_provenance["model_sha256"],
+            "workload_sha256": sha256_file(run_dir / "behavior_workload.json"),
+            "prompt_template_sha256": prompt_template_sha256(),
+            "runtime_version": real_provenance["llama_cpp_version"],
+            "runtime_revision": real_provenance["llama_cpp_git_revision"],
+            "saferoll_source_revision": build_manifest(config)["git_revision"],
+            "config_sha256": config_hash(config),
+            "host_architecture": real_provenance["host_architecture"],
+            "operating_system": real_provenance["operating_system"],
+            "logical_cpu_count": real_provenance["logical_cpu_count"]})

@@ -1,0 +1,87 @@
+experiment:
+  name: phase4g-real-classification
+  seed: 101
+  request_count: 36
+rollout:
+  rollout_id: phase4g-real-classification-rollout
+  epoch: 1
+baseline:
+  revision: qwen-q4-standard-baseline
+  fixed_latency_ms: 0
+  response_prefix: baseline
+  behavior_profile: correct
+  regression_every_nth_item: 4
+  backend_type: llama_cpp
+  prompt_variant: standard
+candidate:
+  revision: qwen-q4-standard-candidate
+  fixed_latency_ms: 0
+  response_prefix: candidate
+  behavior_profile: correct
+  regression_every_nth_item: 4
+  backend_type: llama_cpp
+  prompt_variant: standard
+routing:
+  baseline_weight: 0.5
+  candidate_weight: 0.5
+fault:
+  type: latency
+  target: candidate
+  start_request: 35
+  end_request: 35
+  added_latency_ms: 0
+lifecycle:
+  validation_requests: 2
+  canary_requests: 4
+  evaluation_requests: 12
+  hold_requests: 4
+  completion_requests: 2
+  max_holds: 1
+decision_policy:
+  type: always_promote
+  holds_before_decision: 0
+evidence:
+  minimum_samples_per_revision: 2
+  max_age_logical_units: 1000
+behavior_evidence:
+  enabled: true
+  workload_id: real-workload-v1-classification
+  task_type: classification
+  item_count: 20
+  baseline_items_per_window: 20
+  candidate_items_per_window: 20
+  minimum_samples_per_revision: 3
+  minimum_paired_samples: 3
+  max_age_logical_units: 1000
+policy:
+  type: saferoll
+  numeric_tolerance: 1.0e-09
+  system:
+    max_error_rate: 0.05
+    max_latency_regression_fraction: 2.0
+    min_readiness_success_rate: 0.5
+  behavior:
+    max_accuracy_drop: 0.05
+    max_exact_match_drop: 0.05
+    min_structure_valid_rate: 0.95
+  evidence:
+    require_system_sufficient: true
+    require_behavior_sufficient: true
+    require_fresh_system: true
+    require_fresh_behavior: true
+  consistency:
+    require_observed_routing_match: true
+real_runtime:
+  binary: llama-server
+  model_path: models/qwen2.5-0.5b-instruct-q4_k_m.gguf
+  model_sha256: 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db
+  host: 127.0.0.1
+  port: 18089
+  thread_count: 4
+  context_size: 512
+  batch_size: 128
+  temperature: 0.0
+  max_tokens: 48
+  startup_timeout_seconds: 90.0
+  request_timeout_seconds: 30.0
+  shutdown_timeout_seconds: 10.0

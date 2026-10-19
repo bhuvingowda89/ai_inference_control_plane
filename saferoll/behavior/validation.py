@@ -53,8 +53,10 @@ def validate_behavior(config: Config, workload: Any, probes: list[Any], evidence
             label = 'odd' if number % 2 else 'even'
             values = {'number': number, 'parity': label}
             structured = b.task_type == 'structured_output'
+            real = config.baseline.backend_type == 'llama_cpp'
+            item_input = {'number': number, 'text': f'Record {number} has parity {label}.'} if real else {'number': number}
             expected_items.append({'workload_id': b.workload_id, 'item_id': item_id(b.workload_id,config.experiment.seed,b.task_type,index),
-                'item_index': index, 'task_type': b.task_type, 'input': {'number': number},
+                'item_index': index, 'task_type': b.task_type, 'input': item_input,
                 'expected_output': values if structured else label, 'expected_label': None if structured else label,
                 'expected_structure': {'number':'integer','parity':'string'} if structured else None,
                 'expected_values': values if structured else None})
@@ -80,6 +82,19 @@ def validate_behavior(config: Config, workload: Any, probes: list[Any], evidence
                     raise ValueError('unknown/duplicate/unexpected behavior item membership')
                 for p in samples:
                     item = items[p['item_id']]
+                    if real:
+                        from .real import normalize_output, prompt_for_item, PROMPT_TEMPLATE_VERSION
+                        from .evaluator import evaluate_output
+                        from ..real_validation import check_measured_timing
+                        if (p.get('timing_mode') != 'MEASURED' or not isinstance(p.get('raw_output'), str)
+                                or p.get('normalized_output') != normalize_output(b.task_type, p['raw_output'])
+                                or p['observed_output'] != p['normalized_output']
+                                or p.get('evaluation_result') != evaluate_output(item, p['normalized_output'])
+                                or p.get('user_prompt') != prompt_for_item(item,getattr(config,role).prompt_variant)
+                                or p.get('prompt_template_version') != PROMPT_TEMPLATE_VERSION
+                                or not isinstance(p.get('runtime_usage'), dict)):
+                            raise ValueError('real probe normalization/prompt/evaluation mismatch')
+                        check_measured_timing(p)
                     expected = {'schema_version':BEHAVIOR_SCHEMA_VERSION,'rollout_id':config.rollout.rollout_id,
                         'epoch':config.rollout.epoch,'request_id':probe_id(config,w['window_id'],role,item['item_id']),
                         'request_kind':'behavior_probe','revision':getattr(config,role).revision,
@@ -88,7 +103,13 @@ def validate_behavior(config: Config, workload: Any, probes: list[Any], evidence
                         'window_id':w['window_id'],'window_sequence':w['window_sequence'],**item,
                         'observed_output':p['observed_output'],
                         'predicted_label':p['observed_output'] if b.task_type=='classification' else None,
-                        'success':True,'latency_ms':getattr(config,role).fixed_latency_ms,'logical_time':p['logical_time']}
+                        'success':p['success'] if real else True,
+                        'latency_ms':p['latency_ms'] if real else getattr(config,role).fixed_latency_ms,
+                        'logical_time':p['logical_time']}
+                    if real:
+                        expected.update({key:p[key] for key in ('raw_output','normalized_output','evaluation_result',
+                            'user_prompt','prompt_template_version','timing_mode','request_start_monotonic',
+                            'request_end_monotonic','runtime_usage')})
                     if not isinstance(p['observed_output'],str) or not _same(p,expected):
                         raise ValueError('behavior probe identity/task/expected/observed result mismatch')
                     if type(p['logical_time']) is not int or not w['window_start_logical_time']<p['logical_time']<w['closed_at_logical_time']:

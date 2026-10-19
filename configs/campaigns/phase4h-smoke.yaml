@@ -1,0 +1,20 @@
+campaign:
+  id: phase4h-smoke-v3
+  seed_base: 1100
+  repetitions: 2
+scenarios:
+  - id: healthy
+    version: "1.0"
+    template: configs/phase4f-healthy.yaml
+    fault_domains: [NONE]
+    ground_truth_intent: SAFE
+    expected_condition: healthy candidate
+    backend: MOCK
+  - id: behavior_regression
+    version: "1.0"
+    template: configs/phase4f-silent-behavior-regression.yaml
+    fault_domains: [BEHAVIOR]
+    ground_truth_intent: UNSAFE
+    expected_condition: candidate classification regression
+    backend: MOCK
+policies: [ops_gate, saferoll]

@@ -861,4 +861,133 @@ three-plane validation remain intact. Tests cover exact threshold boundaries,
 capability isolation, oracle exclusion during execution, future-data filtering,
 byte determinism and deliberate snapshot/decision/oracle corruption.
 
-Phase 4G has not begun.
+## Phase 4G: measured CPU inference
+
+The mock backend remains the controlled, exactly replayable experiment backend.
+Phase 4G adds a local `llama-server` adapter. It uses the same rollout lifecycle,
+routing, system evidence, behavior evidence, controller observations, and policy
+inputs. The policy classes do not inspect the backend type. Real latency is measured
+with `time.monotonic()` and marked `MEASURED`; mock latency remains `SIMULATED`.
+Logical event indices still order lifecycle actions. A measured run is validated
+from its persisted requests, probes, and events without rerunning model inference.
+The artifact schema is 7.0; older runs require regeneration for strict validation.
+
+The pinned model is [Qwen2.5 0.5B Instruct GGUF Q4_K_M](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/blob/main/qwen2.5-0.5b-instruct-q4_k_m.gguf),
+published under Apache 2.0 by Qwen. Its small 491 MB GGUF is practical for a CPU
+integration run. Required SHA-256:
+`74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`.
+The source URL can move, but setup refuses any bytes with a different hash. The
+model file is ignored by Git. `llama.cpp` provides the local
+[server and health endpoints](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md).
+
+```bash
+./scripts/setup_llama_cpp.sh
+./scripts/setup_real_model.sh
+./scripts/run_real_experiment.sh configs/phase4g-real-healthy.yaml
+./scripts/run_real_experiment.sh configs/phase4g-real-behavior-regression.yaml
+./scripts/run_real_experiment.sh configs/phase4g-real-classification.yaml
+python3 -m pytest -q
+python3 -m pytest -q -m real_backend
+```
+
+Execution never downloads or substitutes a model. Preflight checks the runtime,
+file hash, and port before starting. The adapter owns one loopback server; it waits
+for `/health`, sends local chat-completion requests, terminates its owned process
+session, and polls for listener closure. Preflight probes for an active listener;
+neither check requires immediately rebinding a recently closed TCP port. Server
+output is saved in `llama-server.log`.
+`preflight.json` records checks even when a run cannot start.
+
+The original `real-workload-v1` generator makes 20 seed-derived records per task
+family. A classification record states an integer's parity; a structured record
+requires a JSON object with integer `number` and string `parity`. Items have stable
+UUID5 IDs, expected results, and a persisted workload hash. Each lifecycle window
+probes all 20 paired items per revision; the full generated dataset remains
+fixed. The standard prompt requires one exact label or exactly the two JSON keys.
+The candidate's optional `weakened_json` serving revision requests a short sentence
+instead. The configured prompt applies to serving requests and paired probes; the
+serving prompt is recorded in `REQUEST_CREATED`. This is an explicit prompt/config
+revision with the same pinned model and runtime. It is an integration scenario,
+not an assumed result.
+
+Classification normalization trims whitespace, folds case, and removes simple
+outer punctuation; only an entire `even` or `odd` label is accepted. Structured
+normalization trims whitespace, optionally removes one whole JSON code fence, and
+canonicalizes strictly parsed JSON. Duplicate keys remain invalid. Extra or wrong
+keys fail structure validity; exact match requires the expected values. Every real
+probe retains its raw output, normalized output, prompt, evaluation result, and
+measured timing. The validator recomputes normalization, task grading, window
+aggregates, paired comparisons, and operational metrics independently.
+
+`backend_runs.jsonl` records startup/shutdown, CPU arguments, version/revision,
+model file size/hash, request counts, host details, and log reference.
+`real_provenance.json` records model, workload, prompt-template, source/config
+hashes and runtime metadata. Unavailable model metadata is explicit `null`.
+The `--n-gpu-layers 0` server argument supplies the CPU-only path. Request
+timeouts are recorded as failed measured requests; model-load, server-exit,
+protocol, and cleanup failures invalidate the run.
+
+Real latency and model tokens can vary across hardware, llama.cpp versions, and
+runtime scheduling even at temperature zero. No byte-identical real output claim
+is made. The deterministic mock runs remain the causal fault substrate. Phase 4G
+does not calibrate thresholds or make comparative research claims.
+
+## Phase 4H: pilot campaign automation
+
+Campaign specs in `configs/campaigns/` list versioned scenarios, template configs,
+fault domains, backend type, policies, seed base, and repetitions. The default
+`phase6-pilot-v1.yaml` expands to 7 scenarios × 5 policies × 3 repetitions =
+105 mock runs. `phase4h-smoke.yaml` exercises 8 mock runs. The optional
+`phase4h-real-pilot-optional.yaml` plans four sequential CPU real-model runs;
+the default pilot never starts llama.cpp.
+
+```bash
+python3 -m saferoll.cli campaign-plan --config configs/campaigns/phase6-pilot-v1.yaml
+./scripts/run_campaign.sh configs/campaigns/phase4h-smoke.yaml
+./scripts/run_campaign.sh configs/campaigns/phase4h-smoke.yaml --resume
+python3 -m saferoll.cli campaign-validate --campaign-dir campaigns/phase4h-smoke-v3
+./scripts/propose_campaign_freeze.sh campaigns/phase4h-smoke-v3
+python3 -m pytest -q
+```
+
+`campaign-plan` writes `campaign_plan.json`, `campaign_plan.csv`, and one fully
+resolved config per run before execution. Expansion order is scenario, sorted
+sweep combination, policy, repetition. A 63-bit seed is derived from SHA-256 of
+the campaign seed base, scenario, policy, repetition, and sweep settings. The
+plan and resolved configs are byte-stable; an existing campaign ID cannot be
+silently replanned with changed inputs. Resumption also rejects a changed
+SafeRoll Python source tree or artifact schema. Optional allowlisted severity sweeps
+expand into explicit additional rows. Thresholds remain fixed within a plan.
+
+`campaign-run` executes sequentially. Each planned identity owns a slot under
+`campaigns/<id>/runs/<run-id>/`; each attempt gets its own run directory. On
+`--resume`, every candidate run is validated before reuse. Incomplete or invalid
+attempts remain on disk, and the next attempt receives a new suffix. Failures
+are recorded in `failures.jsonl`, and the canonical `run_index.jsonl` has one
+record per planned run with `VALID`, `INVALID`, `EXECUTION_FAILED`, or
+`PRECHECK_FAILED` status. The executor continues after failures by default;
+`--fail-fast` stops after the first. Campaign integrity remains invalid until
+all planned runs validate. Real runs use the same sequential execution path,
+including per-run preflight and cleanup from Phase 4G.
+
+The campaign root contains provenance in `campaign_manifest.json`, resume
+attempts in `resume_history.jsonl`, and `pilot_report.json`/`.md`. Under
+`aggregate/`, `run_summary.csv` holds per-run system, behavior, rollout, and
+containment facts; `decision_summary.csv` contains all decisions;
+`policy_scenario_summary.csv` contains counts and rates per scenario/policy;
+`fault_summary.csv` records configured faults and activity; and
+`campaign_summary.json` holds coverage and descriptive repetition summaries
+(mean, median, sample standard deviation, IQR, minimum, maximum). Per-run p95
+values are labeled as such and are never represented as a pooled percentile.
+The report displays P/H/R counts without hiding mixed decisions. Engineering
+durations are provenance, not serving latency.
+
+`campaign-validate` checks plan/config hashes, deterministic seeds, unique
+identities, complete scenario/policy/repetition coverage, absence of unplanned
+slots, every individual valid run, run-index agreement, failure reporting, and
+byte-for-byte regeneration of aggregate tables. Invalid runs are excluded from
+scientific aggregates by predeclared validator status only. The freeze proposal
+command requires a valid pilot and writes
+`proposed_campaign_freeze.json` with status `PROPOSED_NOT_FROZEN` for human
+review. Phase 4H produces pilot-ready experiment automation. It does not freeze
+thresholds or produce final scientific conclusions.

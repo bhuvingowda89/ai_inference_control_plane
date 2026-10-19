@@ -1,0 +1,55 @@
+campaign:
+  id: phase6-pilot-v1
+  seed_base: 1000
+  repetitions: 3
+scenarios:
+  - id: healthy
+    version: "1.0"
+    template: configs/phase4f-healthy.yaml
+    fault_domains: [NONE]
+    ground_truth_intent: SAFE
+    expected_condition: healthy candidate
+    backend: MOCK
+  - id: latency_regression
+    version: "1.0"
+    template: configs/phase4f-latency-regression.yaml
+    fault_domains: [SYSTEM]
+    ground_truth_intent: UNSAFE
+    expected_condition: candidate latency regression
+    backend: MOCK
+  - id: behavior_regression
+    version: "1.0"
+    template: configs/phase4f-silent-behavior-regression.yaml
+    fault_domains: [BEHAVIOR]
+    ground_truth_intent: UNSAFE
+    expected_condition: candidate classification regression
+    backend: MOCK
+  - id: routing_mismatch
+    version: "1.0"
+    template: configs/phase4f-routing-mismatch.yaml
+    fault_domains: [ROUTING]
+    ground_truth_intent: SAFE
+    expected_condition: observed and desired routing differ
+    backend: MOCK
+  - id: stale_behavior
+    version: "1.0"
+    template: configs/phase4f-stale-behavior.yaml
+    fault_domains: [BEHAVIOR, OBSERVATION]
+    ground_truth_intent: UNSAFE
+    expected_condition: regressed candidate with stale visible behavior evidence
+    backend: MOCK
+  - id: rollback_delay
+    version: "1.0"
+    template: configs/phase4e-compound-behavior-rollback-delay.yaml
+    fault_domains: [BEHAVIOR, RECOVERY]
+    ground_truth_intent: UNSAFE
+    expected_condition: candidate behavior regression and delayed rollback propagation
+    backend: MOCK
+  - id: behavior_routing_compound
+    version: "1.0"
+    template: configs/phase4f-behavior-routing-compound.yaml
+    fault_domains: [BEHAVIOR, ROUTING]
+    ground_truth_intent: UNSAFE
+    expected_condition: candidate behavior regression and routing mismatch
+    backend: MOCK
+policies: [readiness_gate, ops_gate, behavior_gate, ai_gate, saferoll]

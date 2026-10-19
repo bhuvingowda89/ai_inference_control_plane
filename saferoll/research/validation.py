@@ -12,7 +12,8 @@ from .oracle import evaluate_decisions,decision_metrics
 
 def validate_policy_artifacts(config: Any, inputs: list[Any], decisions: list[Any], evaluations: list[Any],
                               observations: list[Any], routing: list[Any], system: list[Any],
-                              requests: list[Any], events: list[Any], summary: Any) -> list[str]:
+                              requests: list[Any], events: list[Any], summary: Any,
+                              probes: list[Any] | None = None) -> list[str]:
     issues=[]
     def same(a: Any,b: Any) -> bool:
         return json.dumps(a,sort_keys=True,ensure_ascii=False,allow_nan=False)==json.dumps(b,sort_keys=True,ensure_ascii=False,allow_nan=False)
@@ -57,7 +58,7 @@ def validate_policy_artifacts(config: Any, inputs: list[Any], decisions: list[An
             result=asdict(build_policy(config.policy).decide(visible))
             if not same(decision,result):
                 raise ValueError('policy decision/explanation recomputation mismatch')
-        expected_evaluations=evaluate_decisions(config,inputs,decisions,system,routing,requests)
+        expected_evaluations=evaluate_decisions(config,inputs,decisions,system,routing,requests,probes=probes)
         if not same(evaluations,expected_evaluations):
             raise ValueError('oracle/correctness recomputation mismatch')
         if config.policy.type!='dummy':

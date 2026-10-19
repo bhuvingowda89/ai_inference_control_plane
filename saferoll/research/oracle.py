@@ -6,6 +6,7 @@ import json
 from ..config import Config
 from ..backends.mock import MockBackend
 from ..behavior.workload import build_workload
+from ..behavior.evaluator import evaluate_output
 
 
 def _rank(values: list[float],p: float) -> float:
@@ -42,7 +43,8 @@ def _behavior_quality(config: Config,role: str,sequence: int) -> dict[str,float 
 
 
 def evaluate_decisions(config: Config, inputs: list[dict[str,Any]], decisions: list[dict[str,Any]],
-                       system: list[dict[str,Any]], routing: list[dict[str,Any]], requests: list[dict[str,Any]]) -> list[dict[str,Any]]:
+                       system: list[dict[str,Any]], routing: list[dict[str,Any]], requests: list[dict[str,Any]],
+                       probes: list[dict[str,Any]] | None = None) -> list[dict[str,Any]]:
     """Oracle uses both channels for every policy, without looking at policy explanations."""
     results=[]
     c=config.policy
@@ -56,6 +58,8 @@ def evaluate_decisions(config: Config, inputs: list[dict[str,Any]], decisions: l
             unsafe.append('INVALID_SERVING_REVISION')
         operational=[]
         bases=[]
+        real=config.baseline.backend_type=='llama_cpp'
+        missing_operational=False
         for role in ('baseline','candidate'):
             raw=[r for r in row_set if r['backend_role']==role]
             if raw:
@@ -63,6 +67,11 @@ def evaluate_decisions(config: Config, inputs: list[dict[str,Any]], decisions: l
                 latencies=[float(r['latency_ms']) for r in raw]
                 bases.append('ACTUAL_SERVING_RECORDS')
             else:
+                if real:
+                    missing_operational=True
+                    operational.append({'error_rate':None,'p95_ms':None})
+                    bases.append('NO_REAL_SERVING_SAMPLES')
+                    continue
                 # Known deterministic backend: explicit modeled counterfactual, never a fabricated request.
                 latencies=[];failures=0
                 for row in row_set or [{'request_index':-1}]:
@@ -77,20 +86,32 @@ def evaluate_decisions(config: Config, inputs: list[dict[str,Any]], decisions: l
                 bases.append('CONFIGURED_BACKEND_COUNTERFACTUAL')
             operational.append({'error_rate':rate,'p95_ms':_rank(latencies,95)})
         a,b=operational
-        if b['error_rate']>c.system.max_error_rate+c.numeric_tolerance or b['p95_ms']>a['p95_ms']*(1+c.system.max_latency_regression_fraction)+c.numeric_tolerance:
+        if not missing_operational and (b['error_rate']>c.system.max_error_rate+c.numeric_tolerance or b['p95_ms']>a['p95_ms']*(1+c.system.max_latency_regression_fraction)+c.numeric_tolerance):
             unsafe.append('SYSTEM_REGRESSION')
-        qualities=[_behavior_quality(config,role,sequence) for role in ('baseline','candidate')]
+        if real:
+            items={i['item_id']:i for i in build_workload(config)['items']}
+            qualities=[]
+            for role in ('baseline','candidate'):
+                samples=[p for p in (probes or []) if p['window_id']==window and p['backend_role']==role]
+                evaluated=[evaluate_output(items[p['item_id']],p['observed_output']) for p in samples]
+                n=len(evaluated)
+                classification=config.behavior_evidence.task_type=='classification'
+                qualities.append({'accuracy':sum(x['correct'] is True for x in evaluated)/n if classification and n else None,
+                    'exact_match_rate':sum(x['exact_match'] is True for x in evaluated)/n if not classification and n else None,
+                    'structure_valid_rate':sum(x['structure_valid'] is True for x in evaluated)/n if not classification and n else None})
+        else:
+            qualities=[_behavior_quality(config,role,sequence) for role in ('baseline','candidate')]
         a,b=qualities
-        unknown_behavior=b['accuracy'] is None and b['exact_match_rate'] is None
-        if b['accuracy'] is not None:
+        unknown_behavior=(b['accuracy'] is None and b['exact_match_rate'] is None) or (a['accuracy'] is None and a['exact_match_rate'] is None)
+        if not unknown_behavior and b['accuracy'] is not None:
             if b['accuracy']<a['accuracy']-c.behavior.max_accuracy_drop-c.numeric_tolerance:
                 unsafe.append('BEHAVIOR_REGRESSION')
-        elif b['exact_match_rate'] is not None:
+        elif not unknown_behavior and b['exact_match_rate'] is not None:
             if (b['exact_match_rate']<a['exact_match_rate']-c.behavior.max_exact_match_drop-c.numeric_tolerance
                     or b['structure_valid_rate']<c.behavior.min_structure_valid_rate-c.numeric_tolerance):
                 unsafe.append('BEHAVIOR_REGRESSION')
         physical=[r for r in routing if r['logical_time']<=time][-1]
-        uncertain=unknown_behavior or not physical['desired_effective_match']
+        uncertain=unknown_behavior or missing_operational or not physical['desired_effective_match']
         truth='UNSAFE' if unsafe else 'INDETERMINATE' if uncertain else 'SAFE'
         action=decision['decision']
         classes={'SAFE':{'PROMOTE':'CORRECT_PROMOTION','HOLD':'UNNECESSARY_HOLD','ROLLBACK':'UNNECESSARY_ROLLBACK'},
@@ -100,7 +121,7 @@ def evaluate_decisions(config: Config, inputs: list[dict[str,Any]], decisions: l
             'logical_time':time,'source_window_id':window,'ground_truth_state':truth,'decision':action,
             'correctness_class':classes[truth][action],'critical_error':truth=='UNSAFE' and action=='PROMOTE',
             'oracle_version':'1.0','truth_reasons':unsafe+(['UNREALIZED_DEPLOYMENT_OR_UNDEFINED_BEHAVIOR'] if uncertain and not unsafe else []),
-            'oracle_basis':{'system':bases,'behavior':'CONFIGURED_FULL_DETERMINISTIC_WORKLOAD',
+            'oracle_basis':{'system':bases,'behavior':'ACTUAL_REAL_PROBES' if real else 'CONFIGURED_FULL_DETERMINISTIC_WORKLOAD',
                             'operational_metrics':operational,'behavior_metrics':qualities}})
     return results
 

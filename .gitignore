@@ -4,3 +4,7 @@ __pycache__/
 .venv/
 runs/*
 !runs/.gitkeep
+models/*.gguf
+models/*.part
+campaigns/*
+!campaigns/.gitkeep

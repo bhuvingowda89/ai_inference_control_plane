@@ -30,6 +30,25 @@ class BackendConfig:
     response_prefix: str
     behavior_profile: str = "correct"
     regression_every_nth_item: int = 4
+    backend_type: str = "mock"
+    prompt_variant: str = "standard"
+
+
+@dataclass(frozen=True)
+class RealRuntimeConfig:
+    binary: str = "llama-server"
+    model_path: str = "models/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    model_sha256: str = "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db"
+    host: str = "127.0.0.1"
+    port: int = 18089
+    thread_count: int = 4
+    context_size: int = 512
+    batch_size: int = 128
+    temperature: float = 0.0
+    max_tokens: int = 48
+    startup_timeout_seconds: float = 90.0
+    request_timeout_seconds: float = 30.0
+    shutdown_timeout_seconds: float = 10.0
 
 
 @dataclass(frozen=True)
@@ -96,6 +115,7 @@ class Config:
     behavior_evidence: BehaviorConfig = BehaviorConfig()
     phase4e: Phase4EConfig = Phase4EConfig()
     policy: PolicyConfig = PolicyConfig()
+    real_runtime: RealRuntimeConfig = RealRuntimeConfig()
 
     @property
     def identity(self) -> RolloutIdentity:
@@ -130,17 +150,20 @@ def config_from_dict(data: Any) -> Config:
     if isinstance(data, dict):
         data = dict(data)
         research_policy = parse_policy(data.pop("policy", {}))
+        real_runtime = data.pop("real_runtime", asdict(RealRuntimeConfig()))
         phase4e = parse_phase4e(data.pop("phase4e", {}))
         behavior = data.pop("behavior_evidence", asdict(BehaviorConfig()))
         for role in ("baseline", "candidate"):
             if isinstance(data.get(role), dict):
-                data[role] = {"behavior_profile": "correct", "regression_every_nth_item": 4, **data[role]}
+                data[role] = {"behavior_profile": "correct", "regression_every_nth_item": 4,
+                              "backend_type": "mock", "prompt_variant": "standard", **data[role]}
         evidence = data.pop("evidence", asdict(EvidenceConfig()))
     else:
         evidence = None
         behavior = None
         phase4e = Phase4EConfig()
         research_policy = PolicyConfig()
+        real_runtime = asdict(RealRuntimeConfig())
     if isinstance(data, dict) and set(data) == set(sections):
         # Accepted Phase 4A YAML: preserve every request's canary assignment.
         data = {**data, "lifecycle": {"validation_requests": 0,
@@ -151,8 +174,10 @@ def config_from_dict(data: Any) -> Config:
     if isinstance(data, dict):
         data["evidence"] = evidence
         data["behavior_evidence"] = behavior
+        data["real_runtime"] = real_runtime
     sections["evidence"] = EvidenceConfig
     sections["behavior_evidence"] = BehaviorConfig
+    sections["real_runtime"] = RealRuntimeConfig
     if not isinstance(data, dict) or set(data) != set(sections):
         raise ValueError("config requires exactly: " + ", ".join(sections))
     resolved = {}
@@ -176,6 +201,28 @@ def config_from_dict(data: Any) -> Config:
             normalized[key] = item
         resolved[section] = cls(**normalized)
     config = Config(**resolved, phase4e=phase4e, policy=research_policy)
+    real = config.real_runtime
+    import re
+    if (real.host != "127.0.0.1" or not 1024 <= real.port <= 65535
+            or not re.fullmatch(r"[0-9a-f]{64}", real.model_sha256)
+            or min(real.thread_count, real.context_size, real.batch_size, real.max_tokens) < 1
+            or min(real.startup_timeout_seconds, real.request_timeout_seconds,
+                   real.shutdown_timeout_seconds) <= 0):
+        raise ValueError("invalid real_runtime CPU/server/model parameters")
+    if any(getattr(config, role).backend_type not in {"mock", "llama_cpp"}
+           or getattr(config, role).prompt_variant not in {"standard", "weakened_json"}
+           for role in ("baseline", "candidate")):
+        raise ValueError("unsupported backend_type or prompt_variant")
+    if config.baseline.backend_type != config.candidate.backend_type:
+        raise ValueError("baseline and candidate backend types must match")
+    if config.baseline.backend_type == "llama_cpp":
+        if not config.behavior_evidence.enabled or config.phase4e.enabled:
+            raise ValueError("real backend requires behavior evidence and no deterministic phase4e faults")
+        if config.fault.added_latency_ms != 0 or config.fault.type != "latency":
+            raise ValueError("real backend does not accept simulated request faults")
+        if config.baseline.prompt_variant != "standard" or (config.candidate.prompt_variant == "weakened_json"
+                and config.behavior_evidence.task_type != "structured_output"):
+            raise ValueError("invalid real revision prompt configuration")
     validate_phase4e(config)
     if config.experiment.request_count < 0 or config.rollout.epoch < 1:
         raise ValueError("request_count must be nonnegative and epoch must be positive")
