@@ -6,7 +6,7 @@ import random
 from typing import Any
 from .config import Config
 from .lifecycle import RolloutState
-from .observations import build_observations, build_fault_events
+from .observations import build_observations, build_fault_events, _repository_file
 
 
 def validate_phase4e_artifacts(config: Config, routing: list[Any], observations: list[Any], faults: list[Any],
@@ -44,6 +44,7 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
             if row['backend_role']!=role or row['served_revision']!=getattr(config,role).revision:
                 raise ValueError('request assignment disagrees with effective seeded routing')
         artifacts={'routing_states.jsonl':routing,'system_evidence.jsonl':system,'behavior_evidence.jsonl':behavior}
+        verified_historical: set[str] = set()
         ids=set()
         configured={f.id for group in (config.phase4e.routing_faults,config.phase4e.observation_faults,
                     config.phase4e.behavior_faults,config.phase4e.request_faults) for f in group}
@@ -52,20 +53,46 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
                     or o['rollout_id']!=config.rollout.rollout_id or o['epoch']!=config.rollout.epoch):
                 raise ValueError('observation identity/index mismatch')
             ids.add(o['observation_id'])
+            resolved={}
             for field in ('ground_truth_reference','expected_ground_truth_reference'):
                 ref=o[field]
-                if ref['artifact'] not in artifacts or type(ref['record_index']) is not int or not 0<=ref['record_index']<len(artifacts[ref['artifact']]):
+                external='source_run_dir' in ref
+                if external:
+                    if (field!='ground_truth_reference' or o['observation_type']!='behavior'
+                            or 'historical_evidence_replay' not in o['fault_types']
+                            or ref['artifact']!='behavior_evidence.jsonl'):
+                        raise ValueError('historical reference without an explicit behavior observation fault')
+                    run_dir=ref['source_run_dir']
+                    if run_dir not in verified_historical:
+                        from .validator import validate_run
+                        if not validate_run(_repository_file(run_dir))['valid']:
+                            raise ValueError('historical source run fails independent validation')
+                        verified_historical.add(run_dir)
+                    source_path=_repository_file(run_dir+'/'+ref['artifact'])
+                    import hashlib
+                    raw=source_path.read_bytes()
+                    if hashlib.sha256(raw).hexdigest()!=ref.get('artifact_sha256'):
+                        raise ValueError('historical source artifact hash mismatch')
+                    source_records=[json.loads(line) for line in raw.splitlines()]
+                else:
+                    source_records=artifacts.get(ref['artifact'],[])
+                if type(ref['record_index']) is not int or not 0<=ref['record_index']<len(source_records):
                     raise ValueError('unknown ground-truth observation reference')
-                source=artifacts[ref['artifact']][ref['record_index']]
-                if (ref['rollout_id']!=config.rollout.rollout_id or ref['epoch']!=config.rollout.epoch
-                        or source['rollout_id']!=config.rollout.rollout_id or source['epoch']!=config.rollout.epoch
+                source=source_records[ref['record_index']]
+                resolved[field]=source
+                if ((not external and (ref['rollout_id']!=config.rollout.rollout_id or ref['epoch']!=config.rollout.epoch
+                        or source['rollout_id']!=config.rollout.rollout_id or source['epoch']!=config.rollout.epoch))
+                        or (external and (source['epoch']>=config.rollout.epoch
+                            or source['revision']==config.candidate.revision
+                            or source['rollout_id']!=config.rollout.rollout_id))
+                        or ref['rollout_id']!=source['rollout_id'] or ref['epoch']!=source['epoch']
                         or ref['window_id']!=source.get('window_id') or ref['revision']!=source.get('revision')):
                     raise ValueError('cross-epoch/revision observation reference')
             if any(i not in configured for i in o['fault_ids']):
                 raise ValueError('unknown observation fault ID')
             if o['observation_status'] in {'DELAYED','DROPPED','MISMATCHED'} and not o['fault_active']:
                 raise ValueError('nonfresh observation lacks explicit configured fault')
-            ref=o['ground_truth_reference']; source=artifacts[ref['artifact']][ref['record_index']]
+            source=resolved['ground_truth_reference']
             if o['observation_type']!='routing':
                 latest=source['latest_sample_logical_time']
                 expected_age=o['logical_time']-latest if latest is not None else None
@@ -99,6 +126,6 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
         for key,value in expected.items():
             if not same(summary.get(key),value):
                 raise ValueError(f'containment raw fact mismatch: {key}')
-    except (ValueError,TypeError,KeyError,IndexError,AttributeError) as error:
+    except (OSError,ValueError,TypeError,KeyError,IndexError,AttributeError) as error:
         issues.append(f'invalid phase4e artifacts: {error}')
     return issues

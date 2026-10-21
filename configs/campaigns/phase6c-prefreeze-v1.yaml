@@ -1,0 +1,78 @@
+campaign:
+  id: phase6c-prefreeze-v1
+  seed_base: 6300
+  repetitions: 2
+scenarios:
+- id: historical_attribution
+  version: '1.0'
+  template: configs/phase6c-historical_attribution.yaml
+  fault_domains:
+  - BEHAVIOR
+  - OBSERVATION
+  ground_truth_intent: UNSAFE
+  expected_condition: healthy persisted candidate-v2 epoch-1 evidence replayed during
+    unsafe candidate-v3 epoch-2 evaluation
+  backend: MOCK
+- id: latency_levels
+  version: '1.0'
+  template: configs/phase6c-latency_levels.yaml
+  fault_domains:
+  - SYSTEM
+  ground_truth_intent: INDETERMINATE
+  expected_condition: candidate p95 relative increases 10, 30, 60, 100 percent
+  backend: MOCK
+  sweep:
+    fault.added_latency_ms:
+    - 0
+    - 2
+    - 5
+    - 9
+- id: behavior_levels
+  version: '1.0'
+  template: configs/phase6c-behavior_levels.yaml
+  fault_domains:
+  - BEHAVIOR
+  ground_truth_intent: UNSAFE
+  expected_condition: candidate accuracy loss 10, 20, 25 percent
+  backend: MOCK
+  sweep:
+    candidate.regression_every_nth_item:
+    - 10
+    - 5
+    - 4
+- id: error_levels
+  version: '1.0'
+  template: configs/phase6c-error_levels.yaml
+  fault_domains:
+  - SYSTEM
+  ground_truth_intent: INDETERMINATE
+  expected_condition: candidate failure control, mild, moderate via every 100th, 10th,
+    4th candidate request
+  backend: MOCK
+  sweep:
+    phase4e.request_faults.0.every_nth_candidate:
+    - 100
+    - 10
+    - 4
+- id: structured_moderate
+  version: '1.0'
+  template: configs/phase6c-structured_moderate.yaml
+  fault_domains:
+  - BEHAVIOR
+  ground_truth_intent: UNSAFE
+  expected_condition: 20-item structured profile produces moderate schema and exact-match
+    regression
+  backend: MOCK
+- id: observed_only_cost
+  version: '1.0'
+  template: configs/phase6c-observed_only_cost.yaml
+  fault_domains:
+  - ROUTING
+  ground_truth_intent: SAFE
+  expected_condition: desired/effective match, observed-only mismatch; abstention-cost
+    control
+  backend: MOCK
+policies:
+- ops_gate
+- ai_gate
+- saferoll

@@ -1,10 +1,58 @@
 """Controller views over immutable ground truth; no policy decisions."""
 from __future__ import annotations
 from copy import deepcopy
+import hashlib
 import json
+from pathlib import Path
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 from .config import Config
+
+_REPOSITORY = Path(__file__).resolve().parent.parent
+
+
+def _repository_file(name: str) -> Path:
+    if not isinstance(name, str) or not name or Path(name).is_absolute() or '..' in Path(name).parts:
+        raise ValueError('historical evidence path must be repository-relative')
+    path = (_REPOSITORY / name).resolve()
+    if not path.is_relative_to(_REPOSITORY):
+        raise ValueError('historical evidence path escapes repository')
+    return path
+
+
+def historical_source(config: Config, fault: Any) -> tuple[dict[str,Any], int, str, str]:
+    """Load a pinned, real prior-run record without changing its stored identity."""
+    index_path = _repository_file(fault.historical_index_path)
+    content = index_path.read_bytes()
+    if hashlib.sha256(content).hexdigest() != fault.historical_index_sha256:
+        raise ValueError('historical index SHA-256 mismatch')
+    index = json.loads(content)
+    if index.get('schema_version') != '1.0' or index.get('campaign_id') != 'phase6c-prefreeze-v1':
+        raise ValueError('invalid historical source index')
+    entry = index['entries'][str(config.experiment.seed)]
+    run_dir = entry['run_dir']
+    source_file = _repository_file(run_dir + '/behavior_evidence.jsonl')
+    raw = source_file.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != entry['behavior_evidence_sha256']:
+        raise ValueError('historical evidence SHA-256 mismatch')
+    historical_config = json.loads(_repository_file(run_dir + '/config.resolved.json').read_text(encoding='utf-8'))
+    if (historical_config['experiment']['seed'] != config.experiment.seed
+            or historical_config['rollout']['rollout_id'] != config.rollout.rollout_id
+            or historical_config['rollout']['epoch'] >= config.rollout.epoch
+            or historical_config['candidate']['revision'] == config.candidate.revision):
+        raise ValueError('historical source is not a prior epoch/revision of this rollout')
+    records = [json.loads(line) for line in raw.splitlines()]
+    matches = [(i,r) for i,r in enumerate(records) if r['window_sequence'] == fault.source_window
+               and r['backend_role'] == fault.target]
+    if len(matches) != 1:
+        raise ValueError('historical evidence source window is missing or ambiguous')
+    position, record = matches[0]
+    if (record['rollout_id'] != config.rollout.rollout_id or record['epoch'] != historical_config['rollout']['epoch']
+            or record['revision'] != historical_config['candidate']['revision']
+            or record['workload_id'] != config.behavior_evidence.workload_id):
+        raise ValueError('historical evidence identity or workload mismatch')
+    return record, position, run_dir, digest
 
 
 def reference(artifact: str, index: int, record: dict[str,Any]) -> dict[str,Any]:
@@ -19,6 +67,7 @@ def build_observations(config: Config, system: list[dict[str,Any]], behavior: li
             ('behavior','behavior_evidence.jsonl',behavior,config.behavior_evidence.max_age_logical_units)]:
         for index,current in enumerate(records):
             source_index=index
+            historical=None
             value=deepcopy(current)
             now=current['closed_at_logical_time']
             status=current['freshness_status']
@@ -48,9 +97,32 @@ def build_observations(config: Config, system: list[dict[str,Any]], behavior: li
                         value['revision']=f.reported_revision or (config.baseline.revision if f.target=='candidate' else config.candidate.revision)
                         value['epoch']=f.reported_epoch or config.rollout.epoch
                     status='MISMATCHED' if value is not None else 'DROPPED'
+                elif f.type=='misattribution_replay':
+                    # A faulty observer republishes older values under the current
+                    # evaluation scope and a false identity. The source reference
+                    # remains the immutable older ground-truth record.
+                    source_index=next((i for i,r in enumerate(records) if
+                        r['window_sequence']==f.source_window and r['backend_role']==f.target),-1)
+                    if source_index<0:
+                        raise ValueError('misattribution replay source window does not exist')
+                    value=deepcopy(records[source_index])
+                    for field in ('window_id','window_sequence','lifecycle_state','transition_index'):
+                        value[field]=current[field]
+                    value['revision']=f.reported_revision or current['revision']
+                    value['epoch']=f.reported_epoch or current['epoch']
+                    status='MISMATCHED'
+                elif f.type=='historical_evidence_replay':
+                    historical=historical_source(config,f)
+                    value=deepcopy(historical[0])
+                    for field in ('window_id','window_sequence','lifecycle_state','transition_index'):
+                        value[field]=current[field]
+                    status='MISMATCHED'
             if dropped:
                 value=None
-            ground=records[source_index]
+            ground=historical[0] if historical else records[source_index]
+            ground_ref=reference(artifact,historical[1],ground) if historical else reference(artifact,source_index,ground)
+            if historical:
+                ground_ref.update(source_run_dir=historical[2],artifact_sha256=historical[3])
             age=now-ground['latest_sample_logical_time'] if ground['latest_sample_logical_time'] is not None else None
             if not faults:
                 status='NO_SAMPLES' if age is None else ('FRESH' if age<=age_limit else 'STALE')
@@ -60,7 +132,7 @@ def build_observations(config: Config, system: list[dict[str,Any]], behavior: li
             observations.append({'observation_id':str(uuid5(NAMESPACE_URL,name)),'rollout_id':config.rollout.rollout_id,
                 'epoch':config.rollout.epoch,'logical_time':now,'observation_type':source,
                 'source_window_id':ground['window_id'],'source_revision':ground['revision'],
-                'ground_truth_reference':reference(artifact,source_index,ground),
+                'ground_truth_reference':ground_ref,
                 'expected_ground_truth_reference':reference(artifact,index,current),
                 'observed_value':value,'observation_status':status,'available':value is not None,
                 'observed_age_logical_units':age,'ground_truth_age_at_evaluation':ground['age_at_evaluation'],

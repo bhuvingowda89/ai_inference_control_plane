@@ -1,0 +1,69 @@
+experiment:
+  name: phase6b-error_threshold
+  seed: 101
+  request_count: 93
+rollout:
+  rollout_id: phase6b-error_threshold-rollout
+  epoch: 1
+baseline:
+  revision: baseline-v1
+  fixed_latency_ms: 10
+  response_prefix: baseline
+  behavior_profile: correct
+  regression_every_nth_item: 4
+candidate:
+  revision: candidate-v2
+  fixed_latency_ms: 11
+  response_prefix: candidate
+  behavior_profile: correct
+  regression_every_nth_item: 4
+routing:
+  baseline_weight: 0.5
+  candidate_weight: 0.5
+fault:
+  type: candidate_request_failure
+  target: candidate
+  start_request: 45
+  end_request: 64
+  added_latency_ms: 0
+lifecycle:
+  validation_requests: 5
+  canary_requests: 40
+  evaluation_requests: 20
+  hold_requests: 3
+  completion_requests: 5
+  max_holds: 1
+decision_policy:
+  type: always_promote
+  holds_before_decision: 0
+evidence:
+  minimum_samples_per_revision: 3
+  max_age_logical_units: 1000
+behavior_evidence:
+  enabled: true
+  workload_id: deterministic-parity-v1
+  task_type: classification
+  item_count: 20
+  baseline_items_per_window: 20
+  candidate_items_per_window: 20
+  minimum_samples_per_revision: 3
+  minimum_paired_samples: 3
+  max_age_logical_units: 1000
+policy:
+  type: saferoll
+  numeric_tolerance: 1.0e-09
+  system:
+    max_error_rate: 0.05
+    max_latency_regression_fraction: 0.2
+    min_readiness_success_rate: 0.5
+  behavior:
+    max_accuracy_drop: 0.05
+    max_exact_match_drop: 0.05
+    min_structure_valid_rate: 0.95
+  evidence:
+    require_system_sufficient: true
+    require_behavior_sufficient: true
+    require_fresh_system: true
+    require_fresh_behavior: true
+  consistency:
+    require_observed_routing_match: true

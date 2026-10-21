@@ -104,7 +104,8 @@ def load_campaign_spec(path: str | Path) -> CampaignSpec:
             raise ValueError("sweep must map an allowlisted field to numeric values")
         allowed_sweeps = {"fault.added_latency_ms", "candidate.regression_every_nth_item",
                           "phase4e.observation_faults.0.duration_windows",
-                          "phase4e.routing_faults.0.duration_requests"}
+                          "phase4e.routing_faults.0.duration_requests",
+                          "phase4e.request_faults.0.every_nth_candidate"}
         sweep = []
         for key in sorted(sweep_raw):
             values = sweep_raw[key]

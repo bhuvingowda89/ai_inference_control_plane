@@ -6,7 +6,8 @@ from typing import Any
 
 ROUTING_TYPES = {'routing_propagation_delay','stale_observed_routing','incorrect_observed_routing','partial_rollout',
                  'rollback_propagation_delay','partial_rollback','rollback_observation_mismatch'}
-OBSERVATION_TYPES = {'observation_delay','observation_drop','stale_evidence','misattribution'}
+OBSERVATION_TYPES = {'observation_delay','observation_drop','stale_evidence','misattribution',
+                     'misattribution_replay','historical_evidence_replay'}
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,8 @@ class ObservationFault:
     drop_every_nth_record: int = 1
     reported_revision: str | None = None
     reported_epoch: int | None = None
+    historical_index_path: str | None = None
+    historical_index_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,7 @@ class RequestFault:
     end_request: int
     target: str = 'candidate'
     added_latency_ms: float = 0.0
+    every_nth_candidate: int = 1
 
 
 @dataclass(frozen=True)
@@ -73,10 +77,12 @@ def _record(cls: Any, data: Any) -> Any:
     except TypeError as error:
         raise ValueError(f'missing fault fields: {error}') from error
     for key,value in asdict(obj).items():
-        if key in {'reported_state','reported_revision','reported_epoch'} and value is None:
+        if key in {'reported_state','reported_revision','reported_epoch','historical_index_path',
+                   'historical_index_sha256'} and value is None:
             continue
         if key in {'duration_requests','start_window','duration_windows','delay_logical_units','source_window',
-                   'drop_every_nth_record','every_nth_item','start_request','end_request','reported_epoch'}:
+                   'drop_every_nth_record','every_nth_item','every_nth_candidate',
+                   'start_request','end_request','reported_epoch'}:
             if type(value) is not int or value<0:
                 raise ValueError(f'{key} must be a nonnegative integer')
         elif key in {'candidate_weight','added_latency_ms'}:
@@ -134,7 +140,12 @@ def validate_phase4e(config: Any) -> None:
                 or f.target not in {'baseline','candidate'} or f.duration_windows<1
                 or f.start_window>=windows or f.drop_every_nth_record<1 or (f.source=='behavior' and not config.behavior_evidence.enabled)
                 or (f.type=='observation_delay' and f.delay_logical_units<1)
-                or (f.type=='stale_evidence' and f.source_window>=f.start_window)
+                or (f.type in {'stale_evidence','misattribution_replay'} and f.source_window>=f.start_window)
+                or (f.type=='misattribution_replay' and f.reported_revision is None and f.reported_epoch is None)
+                or (f.type=='historical_evidence_replay' and (f.source!='behavior' or not f.historical_index_path
+                    or not f.historical_index_sha256 or len(f.historical_index_sha256)!=64))
+                or (f.type!='historical_evidence_replay' and (f.historical_index_path is not None
+                    or f.historical_index_sha256 is not None))
                 or (f.reported_epoch is not None and f.reported_epoch<1)):
             raise ValueError('invalid observation fault')
     for f in p.behavior_faults:
@@ -144,6 +155,8 @@ def validate_phase4e(config: Any) -> None:
     for f in p.request_faults:
         if (f.type not in {'latency','candidate_request_failure'} or f.target!='candidate'
                 or not 0<=f.start_request<=f.end_request<config.experiment.request_count
+                or f.every_nth_candidate<1
+                or (f.type=='latency' and f.every_nth_candidate!=1)
                 or (f.type=='candidate_request_failure' and f.added_latency_ms!=0)):
             raise ValueError('invalid additional request fault')
     if not math.isfinite(config.candidate.fixed_latency_ms+config.fault.added_latency_ms+

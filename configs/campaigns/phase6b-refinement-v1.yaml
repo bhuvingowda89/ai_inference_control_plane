@@ -1,0 +1,89 @@
+campaign:
+  id: phase6b-refinement-v1
+  seed_base: 6200
+  repetitions: 2
+scenarios:
+- id: revision_attribution_mismatch
+  version: '1.0'
+  template: configs/phase6b-revision_attribution_mismatch.yaml
+  fault_domains:
+  - BEHAVIOR
+  - OBSERVATION
+  ground_truth_intent: UNSAFE
+  expected_condition: current candidate regression hidden by healthy prior-window
+    values under a false revision
+  backend: MOCK
+- id: rollout_realization_mismatch
+  version: '1.0'
+  template: configs/phase6b-rollout_realization_mismatch.yaml
+  fault_domains:
+  - ROUTING
+  ground_truth_intent: INDETERMINATE
+  expected_condition: desired 0.5, observed 0.2, effective 0.1 candidate exposure
+  backend: MOCK
+- id: observed_only_cost_control
+  version: '1.0'
+  template: configs/phase6b-observed_only_cost_control.yaml
+  fault_domains:
+  - ROUTING
+  ground_truth_intent: SAFE
+  expected_condition: observed-only mismatch with healthy candidate and realized desired
+    exposure
+  backend: MOCK
+- id: latency_severity
+  version: '1.0'
+  template: configs/phase6b-latency_severity.yaml
+  fault_domains:
+  - SYSTEM
+  ground_truth_intent: INDETERMINATE
+  expected_condition: prespecified 10, 30, 60, 100 percent relative candidate latency
+    levels
+  backend: MOCK
+  sweep:
+    fault.added_latency_ms:
+    - 0
+    - 2
+    - 5
+    - 9
+- id: behavior_severity
+  version: '1.0'
+  template: configs/phase6b-behavior_severity.yaml
+  fault_domains:
+  - BEHAVIOR
+  ground_truth_intent: UNSAFE
+  expected_condition: prespecified 10, 20, 25 percent classification accuracy losses
+  backend: MOCK
+  sweep:
+    candidate.regression_every_nth_item:
+    - 10
+    - 5
+    - 4
+- id: error_threshold
+  version: '1.0'
+  template: configs/phase6b-error_threshold.yaml
+  fault_domains:
+  - SYSTEM
+  ground_truth_intent: UNSAFE
+  expected_condition: candidate request failures exercise error-rate gate
+  backend: MOCK
+- id: structured_threshold
+  version: '1.0'
+  template: configs/phase6b-structured_threshold.yaml
+  fault_domains:
+  - BEHAVIOR
+  ground_truth_intent: UNSAFE
+  expected_condition: candidate structured-output regression exercises exact-match
+    and schema validity
+  backend: MOCK
+- id: behavior_sufficiency
+  version: '1.0'
+  template: configs/phase6b-behavior_sufficiency.yaml
+  fault_domains:
+  - NONE
+  ground_truth_intent: SAFE
+  expected_condition: two candidate behavior samples with minimum three
+  backend: MOCK
+policies:
+- ops_gate
+- ai_gate
+- saferoll
