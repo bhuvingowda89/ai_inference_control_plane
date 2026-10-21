@@ -38,7 +38,7 @@ def save(path: Path, value: object) -> None:
     path.write_text(content)
 
 
-def history(index: dict, seed_design: dict) -> dict:
+def history(seed_design: dict) -> dict:
     old = json.loads((V1 / "history_index.json").read_text())
     entries = {}
     old_severity = "epoch1_v2_to_epoch2_v3"
