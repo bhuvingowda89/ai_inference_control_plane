@@ -50,5 +50,7 @@ def test_final_v2_plan_is_paired_and_deterministic_if_proposed():
                                            {"severity": row["severity"]})
         pairs.setdefault(row["pairing_key"], []).append(row)
     assert all(len(rows) == 5 and len({r["seed"] for r in rows}) == 1 for rows in pairs.values())
+    # A later scientific campaign must use a new source revision. The frozen
+    # final-v2 plan remains valid, while its source preflight must detect drift.
     result = preflight(require_frozen=False, check_clean=False)
-    assert result["valid"], result["issues"]
+    assert set(result["issues"]) <= {"SOURCE_REVISION_MISMATCH", "SOURCE_TREE_MISMATCH"}

@@ -6,7 +6,7 @@ import random
 from typing import Any
 from .config import Config
 from .lifecycle import RolloutState
-from .observations import build_observations, build_fault_events, _repository_file
+from .observations import build_observations, build_fault_events, _repository_file, historical_source
 
 
 def validate_phase4e_artifacts(config: Config, routing: list[Any], observations: list[Any], faults: list[Any],
@@ -44,7 +44,7 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
             if row['backend_role']!=role or row['served_revision']!=getattr(config,role).revision:
                 raise ValueError('request assignment disagrees with effective seeded routing')
         artifacts={'routing_states.jsonl':routing,'system_evidence.jsonl':system,'behavior_evidence.jsonl':behavior}
-        verified_historical: set[str] = set()
+        verified_historical: dict[str, tuple[dict[str,Any],int,str,str]] = {}
         ids=set()
         configured={f.id for group in (config.phase4e.routing_faults,config.phase4e.observation_faults,
                     config.phase4e.behavior_faults,config.phase4e.request_faults) for f in group}
@@ -64,10 +64,15 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
                         raise ValueError('historical reference without an explicit behavior observation fault')
                     run_dir=ref['source_run_dir']
                     if run_dir not in verified_historical:
-                        from .validator import validate_run
-                        if not validate_run(_repository_file(run_dir))['valid']:
-                            raise ValueError('historical source run fails independent validation')
-                        verified_historical.add(run_dir)
+                        replay_faults=[f for f in config.phase4e.observation_faults
+                            if f.id in o['fault_ids'] and f.type=='historical_evidence_replay']
+                        if len(replay_faults)!=1:
+                            raise ValueError('historical reference has no unique configured replay fault')
+                        verified_historical[run_dir]=historical_source(config,replay_faults[0])
+                    pinned_record,pinned_position,pinned_dir,pinned_digest=verified_historical[run_dir]
+                    if (run_dir!=pinned_dir or ref['record_index']!=pinned_position
+                            or ref.get('artifact_sha256')!=pinned_digest):
+                        raise ValueError('historical reference differs from frozen source selection')
                     source_path=_repository_file(run_dir+'/'+ref['artifact'])
                     import hashlib
                     raw=source_path.read_bytes()
@@ -84,7 +89,7 @@ def validate_phase4e_artifacts(config: Config, routing: list[Any], observations:
                         or source['rollout_id']!=config.rollout.rollout_id or source['epoch']!=config.rollout.epoch))
                         or (external and (source['epoch']>=config.rollout.epoch
                             or source['revision']==config.candidate.revision
-                            or source['rollout_id']!=config.rollout.rollout_id))
+                            or not same(source,pinned_record)))
                         or ref['rollout_id']!=source['rollout_id'] or ref['epoch']!=source['epoch']
                         or ref['window_id']!=source.get('window_id') or ref['revision']!=source.get('revision')):
                     raise ValueError('cross-epoch/revision observation reference')

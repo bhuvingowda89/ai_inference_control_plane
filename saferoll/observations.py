@@ -21,34 +21,74 @@ def _repository_file(name: str) -> Path:
 
 
 def historical_source(config: Config, fault: Any) -> tuple[dict[str,Any], int, str, str]:
-    """Load a pinned, real prior-run record without changing its stored identity."""
+    """Validate and load pinned prior evidence without rewriting source identity."""
     index_path = _repository_file(fault.historical_index_path)
     content = index_path.read_bytes()
     if hashlib.sha256(content).hexdigest() != fault.historical_index_sha256:
         raise ValueError('historical index SHA-256 mismatch')
     index = json.loads(content)
-    if index.get('schema_version') != '1.0' or index.get('campaign_id') != 'phase6c-prefreeze-v1':
+    schema = index.get('schema_version')
+    if schema not in {'1.0', '2.0'} or not isinstance(index.get('campaign_id'), str) or not index['campaign_id']:
         raise ValueError('invalid historical source index')
-    entry = index['entries'][str(config.experiment.seed)]
+    entries = index.get('entries')
+    if not isinstance(entries, dict) or str(config.experiment.seed) not in entries:
+        raise ValueError('historical source seed pairing is absent')
+    entry = entries[str(config.experiment.seed)]
+    if not isinstance(entry, dict):
+        raise ValueError('invalid historical source entry')
     run_dir = entry['run_dir']
+    source_dir = _repository_file(run_dir)
+    if not source_dir.is_dir() or source_dir.name != entry.get('source_run_id', source_dir.name):
+        raise ValueError('historical source run identity mismatch')
+    from .validator import validate_run
+    if not validate_run(source_dir)['valid']:
+        raise ValueError('historical source run fails independent validation')
     source_file = _repository_file(run_dir + '/behavior_evidence.jsonl')
     raw = source_file.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     if digest != entry['behavior_evidence_sha256']:
         raise ValueError('historical evidence SHA-256 mismatch')
     historical_config = json.loads(_repository_file(run_dir + '/config.resolved.json').read_text(encoding='utf-8'))
+    source_workload_path = _repository_file(run_dir + '/behavior_workload.json')
+    source_workload = json.loads(source_workload_path.read_text(encoding='utf-8'))
+    from .behavior.workload import build_workload
+    current_workload = build_workload(config)
     if (historical_config['experiment']['seed'] != config.experiment.seed
-            or historical_config['rollout']['rollout_id'] != config.rollout.rollout_id
             or historical_config['rollout']['epoch'] >= config.rollout.epoch
-            or historical_config['candidate']['revision'] == config.candidate.revision):
-        raise ValueError('historical source is not a prior epoch/revision of this rollout')
+            or historical_config['candidate']['revision'] == config.candidate.revision
+            or source_workload['workload_id'] != current_workload['workload_id']
+            or source_workload['items'] != current_workload['items']):
+        raise ValueError('historical source seed, epoch, revision or workload mismatch')
+    if schema == '2.0':
+        import re
+        match = re.search(r'-r(\d+)$', config.experiment.name)
+        if match is None:
+            raise ValueError('current historical run lacks a repetition pairing key')
+        pairing = f'historical_attribution:epoch1_v2_to_epoch2_v3:{match.group(1)}'
+        required = {'source_run_id': source_dir.name, 'source_epoch': historical_config['rollout']['epoch'],
+                    'source_revision': historical_config['candidate']['revision'],
+                    'rollout_id': historical_config['rollout']['rollout_id'],
+                    'seed': config.experiment.seed,
+                    'source_artifact_path': run_dir + '/behavior_evidence.jsonl',
+                    'source_sha256': digest,
+                    'source_config_sha256': hashlib.sha256(_repository_file(run_dir + '/config.resolved.json').read_bytes()).hexdigest(),
+                    'workload_sha256': hashlib.sha256(source_workload_path.read_bytes()).hexdigest(),
+                    'workload_id': source_workload['workload_id'],
+                    'pairing_key': pairing, 'identity_relation': 'DISTINCT_SOURCE_CURRENT'}
+        if any(entry.get(key) != value for key, value in required.items()):
+            raise ValueError('historical source frozen provenance or pairing mismatch')
+        if historical_config['rollout']['rollout_id'] == config.rollout.rollout_id:
+            raise ValueError('historical source/current rollout identities must differ')
+    elif historical_config['rollout']['rollout_id'] != config.rollout.rollout_id:
+        # Legacy schema supported same-rollout replay only; new campaigns use v2.
+        raise ValueError('legacy historical source rollout identity mismatch')
     records = [json.loads(line) for line in raw.splitlines()]
     matches = [(i,r) for i,r in enumerate(records) if r['window_sequence'] == fault.source_window
                and r['backend_role'] == fault.target]
     if len(matches) != 1:
         raise ValueError('historical evidence source window is missing or ambiguous')
     position, record = matches[0]
-    if (record['rollout_id'] != config.rollout.rollout_id or record['epoch'] != historical_config['rollout']['epoch']
+    if (record['rollout_id'] != historical_config['rollout']['rollout_id'] or record['epoch'] != historical_config['rollout']['epoch']
             or record['revision'] != historical_config['candidate']['revision']
             or record['workload_id'] != config.behavior_evidence.workload_id):
         raise ValueError('historical evidence identity or workload mismatch')
