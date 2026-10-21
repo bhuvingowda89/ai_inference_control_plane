@@ -46,6 +46,13 @@ def build_manifest(config: Config) -> dict[str, Any]:
                 "config_sha256": config_hash(config), "source_tree_sha256": source.hexdigest(),
                 "python_version": platform.python_version(), "platform": platform.platform(),
                 "git_revision": None, "git_dirty": None}
+    if config.experiment.name.startswith('final-v1-') and not config.experiment.name.startswith('final-v1-history-source-'):
+        from .campaign.final_freeze import canonical_freeze_hash
+        freeze_path = package.parent / 'campaigns/final-v1/campaign_freeze.json'
+        freeze = json.loads(freeze_path.read_text(encoding='utf-8'))
+        if freeze.get('status') != 'FROZEN' or freeze.get('freeze_sha256') != canonical_freeze_hash(freeze, freeze_path.parent):
+            raise ValueError('final-v1 run requires the reviewed immutable freeze hash')
+        manifest['freeze_sha256'] = freeze['freeze_sha256']
     try:
         revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=package,
                                   capture_output=True, text=True, check=False)
