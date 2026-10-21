@@ -56,6 +56,7 @@ def preflight(directory: Path = DIRECTORY, *, require_frozen: bool = False, chec
     analysis_paths=list((ROOT/'analysis').rglob('*.py'))+[ROOT/'saferoll/research/oracle.py']
     if source_hash(source_paths)!=freeze['source_tree_sha256']: issues.append('SOURCE_TREE_MISMATCH')
     if source_hash(analysis_paths)!=freeze['analysis_source_sha256']: issues.append('ANALYSIS_SOURCE_MISMATCH')
+    if freeze.get('analysis_version')!='1.0': issues.append('ANALYSIS_VERSION_MISMATCH')
     for filename,key in [('campaign_plan.json','plan_sha256'),('seed_design.json','seed_design_sha256'),
                          ('history_index.json','history_index_sha256'),('real_campaign_spec.json','real_campaign_spec_sha256')]:
         if file_hash(directory/filename)!=freeze[key]: issues.append(filename.upper()+'_MISMATCH')
@@ -124,6 +125,9 @@ def preflight(directory: Path = DIRECTORY, *, require_frozen: bool = False, chec
         issues.append('REAL_MODEL_MISMATCH')
     if 'build 11146' not in real['llama_server_version'] or '7fe450e19' not in real['llama_server_version']:
         issues.append('REAL_RUNTIME_MISMATCH')
+    binary=Path(real['llama_server_binary'])
+    if not binary.is_file() or file_hash(binary)!=real['llama_server_binary_sha256']:
+        issues.append('REAL_RUNTIME_BINARY_MISMATCH')
     if not real['pilot_valid'] or real['final_repetitions'] is None: issues.append('REAL_PILOT_INCOMPLETE')
     for row in real.get('final_runs',[]):
         path=directory/row['config_path']

@@ -10,6 +10,7 @@ from pathlib import Path
 import statistics
 import subprocess
 import sys
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -187,11 +188,13 @@ def main() -> None:
     pilot_valid=len(pilot['runs'])==10 and all(r['validity']['valid'] for r in pilot['runs'])
     runtime=load_config(ROOT/'configs/phase4g-real-healthy.yaml').to_dict()['real_runtime']
     model=ROOT/runtime['model_path']
+    binary=Path(shutil.which(runtime['binary']) or runtime['binary'])
     version=subprocess.run(['llama-server','--version'],capture_output=True,text=True).stdout+subprocess.run(['llama-server','--version'],capture_output=True,text=True).stderr
     from saferoll.behavior.real import prompt_template_sha256
     real={'conditions':['healthy','structured_configuration_regression'],'role':'external validity only','pilot_valid':pilot_valid,
           'pilot_run_count':len(pilot['runs']),'final_repetitions':None,'runtime':runtime,'model_sha256_actual':digest(model),
           'llama_server_version':version.strip(),'llama_cpp_git_revision':'7fe450e19',
+          'llama_server_binary':str(binary.resolve()),'llama_server_binary_sha256':digest(binary),
           'prompt_template_sha256':prompt_template_sha256(),'prompt_template_version':'real-v1',
           'workload_id':'real-workload-v1-structured_output','n_gpu_layers':0,
           'seed_semantics':'fixed seed 7400 through 7404 in pilot; final seed list fixed before final execution',
@@ -318,6 +321,7 @@ def main() -> None:
           'effect_sizes':['risk difference','risk ratio where defined','paired median difference'],
           'comparison_families':{'primary':'SafeRoll vs AIGate','secondary':'SafeRoll vs OpsGate','severity':'within each fault domain'},
           'multiplicity':'Holm within each inferential family; descriptive summaries unadjusted'},
+      'analysis_version':'1.0',
       'real_campaign_spec_sha256':digest(OUT/'real_campaign_spec.json'),'artifact_schema_version':SCHEMA_VERSION,
       'source_git_revision':git,'git_dirty':dirty,'source_tree_sha256':source_hash(source_paths),
       'analysis_source_sha256':source_hash(analysis_paths),'full_final_campaign_executed':False}
