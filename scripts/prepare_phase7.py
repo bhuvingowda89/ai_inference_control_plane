@@ -74,7 +74,7 @@ def catalog() -> list[dict]:
     c += [condition('BEHAVIORAL','structured','primary_85pct_valid_75pct_exact','configs/phase6c-structured_moderate.yaml')]
     c += [condition('STATE_CONSISTENCY','historical_attribution','epoch1_v2_to_epoch2_v3','configs/phase6c-historical_attribution.yaml',routing=True)]
     c += [condition('OBSERVATION','stale_behavior','one_prior_window','configs/phase4f-stale-behavior.yaml',routing=True),
-          condition('OBSERVATION','dropped_system','candidate_observation_dropped','configs/phase4f-dropped-observation.yaml',routing=True,truth='INDETERMINATE')]
+          condition('OBSERVATION','dropped_system','candidate_observation_dropped','configs/phase4f-dropped-observation.yaml',routing=True,truth='SAFE')]
     c += [condition('RECOVERY','rollback_delay','12_requests','configs/phase4e-compound-behavior-rollback-delay.yaml',routing=True)]
     c += [condition('COMPOUND','behavior_routing','25pct_accuracy_plus_routing','configs/phase4f-behavior-routing-compound.yaml',routing=True)]
     c += [condition('COST_CONTROL','observed_only_routing','safe_observed_mismatch','configs/phase6c-observed_only_cost.yaml',routing=True,truth='SAFE'),
