@@ -1,0 +1,37 @@
+SafeRoll Phase 11 completion report
+
+1. Phase 11 status: PASSED for manuscript content and evidence audits. Author/submission metadata remain for Phase 12.
+2. Manuscript title: SafeRoll: State-Consistent Progressive Deployment and Automated Rollback for AI Inference Services.
+3. Target journal: Future Generation Computer Systems (FGCS), Elsevier.
+4. Main manuscript word count: 9,263 including abstract, excluding appendices; full source 9,880 words.
+5. Abstract word count: 233.
+6. Sections: Introduction; Background and Motivation; Problem Formulation; SafeRoll Design; RolloutBench Experimental Framework; Experimental Methodology; Results; Discussion; Threats to Validity; Related Work; Conclusion; four appendices.
+7. Contributions: state-consistent rollout model; SafeRoll controller; RolloutBench; frozen five-policy evaluation; pinned real inference validation.
+8. RQ1 wording: No unsafe promotions were observed for SafeRoll in the 91 frozen unsafe evaluations; AIGate promoted 10/91 and infrastructure-oriented baselines promoted more. This is not a universal zero-risk claim.
+9. RQ2 wording: Evidence composition changes both unsafe and safe promotion; SafeRoll lowered UPR relative to AIGate but lowered SPR from 26/39 to 16/39.
+10. RQ3 wording: A numerically healthy behavior observation cannot justify the active candidate when it belongs to a different revision and epoch.
+11. Historical attribution wording: AIGate PROMOTE 10/10 versus SafeRoll HOLD 10/10; SafeRoll avoided 10 immediate unsafe promotions but made zero immediate rollbacks. Its first HOLDs remain DELAYED_ROLLBACK under the frozen oracle.
+12. RQ4 wording: In behavior-plus-routing faults, BehaviorGate, AIGate, and SafeRoll each rolled back 10/10; the condition shows no unique SafeRoll advantage.
+13. RQ5 containment wording: Rollback request at mock logical time 553 preceded physical zero-candidate state at 606; delay 53 logical units, with 21 post-request candidate completions across 10 seeds.
+14. RQ6 safety-cost wording: SafeRoll produced 26 unnecessary HOLDs, zero unnecessary rollbacks, three safe HOLD-bound failures, and 319 additional candidate requests across held-safe AIGate pairs. AIGate's own HOLD costs are also reported.
+15. REAL_CPU wording: Separate n=3 healthy and n=3 structured-regression runs show that the broken candidate was faster and had zero serving failures while structure validity and exact match fell to zero; no broad significance claim is made.
+16. Adverse-result wording: SafeRoll had lower first-decision correctness and SPR than AIGate, and slightly higher request-normalized harmful exposure (0.40522 versus 0.40114).
+17. Main figures: 9, numbered 1–9 in the manuscript and linked to Phase 10 source artifacts.
+18. Appendix figures: 3, numbered S1–S3.
+19. Main tables: 8, including the qualified related-work comparison.
+20. Appendix tables: 3, numbered S1–S3.
+21. Cited sources: 13 verified bibliography entries.
+22. Recent FGCS-relevant cited articles: 2 from 2026; four FGCS articles total.
+23. Related-work comparison table: PRESENT as manuscript Table 8 and related_work_comparison.csv; absent capabilities are qualified as “not established” by inspected sources.
+24. Reproducibility section: PRESENT, including frozen seeds/interventions, validators, historical-source provenance, source/model/runtime hashes, and final dataset/analysis/visualization hashes.
+25. Threats to validity: PRESENT for internal, construct, statistical, external/ecological, provenance, and transfer-of-threshold limitations.
+26. Manuscript fact check: {"valid":true,"issues":[]}; Phase 9/10 manifest hashes and key policy, paired, cost, recovery, exposure, and real-run values match frozen artifacts.
+27. Claim audit: PASS; benefit, cost, adverse correctness, HOLD semantics, and external-validity limits are retained. Unsupported universal or monotonic claims are explicitly rejected.
+28. Citation audit: PASS; 13 citations exist, were inspected, support their attached claim categories, and have bibliography entries with no duplicates.
+29. Figure/table reference audit: {"valid":true,"issues":[]}; all 22 included Phase 10 visual artifacts match their manifest hashes and use manuscript numbering.
+30. Unresolved manuscript issues: author names, affiliations, corresponding-author details, and submission declarations are unavailable; FGCS's live author guide could not be fetched directly; the illustrated HTML is the preferred visual review copy because macOS DOCX conversion preserved text/references but did not embed images. Journal production formatting remains for Phase 12.
+31. Phase 12 may begin: YES, for author metadata, current guide confirmation, production typesetting, and submission preparation. No experiment, statistical result, or Phase 10 artifact was changed.
+
+Files: main.md (authoritative source), references.bib, review.html (illustrated), review.docx (text review), manuscript_fact_check.json, claim_audit.md, citation_audit.md, figure_table_reference_audit.json, manuscript_review.md.
+Validation command: python3 manuscript/audit.py
+Repository tests: 651 passed, 3 deselected in 78.04s (0:01:18).

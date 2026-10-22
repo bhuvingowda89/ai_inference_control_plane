@@ -1,0 +1,3 @@
+# Related-work Table 8 audit
+
+The five rows retain their qualified wording. Argo Rollouts, KServe, and Kayenta have inspected first-party documentation; Clipper has an inspected original paper; SafeRoll is this study. “Not established” means the inspected source does not establish the specific decision contract, not that the system cannot be configured or extended. Argo's analysis templates can consume custom behavior metrics; KServe documents revision routing; Clipper considers online accuracy. These capabilities are explicitly acknowledged. INFaaS and MArk were added to narrative positioning, not forced into the table because neither paper evaluates progressive rollout attribution. No binary ‘No’ cell was introduced.

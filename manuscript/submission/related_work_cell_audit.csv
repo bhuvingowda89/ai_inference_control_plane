@@ -1,0 +1,31 @@
+work,column,cell,inspected_source,interpretation_rule
+Argo Rollouts analysis,operational_signals,configurable,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+Argo Rollouts analysis,behavior_signals,configurable through templates,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+Argo Rollouts analysis,progressive_deployment,yes,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+Argo Rollouts analysis,revision_epoch_attribution,not established as built-in inference contract,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+Argo Rollouts analysis,explicit_hold,inconclusive/manual judgment,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+Argo Rollouts analysis,physical_containment_endpoint,not established,argoAnalysis,Qualified source scope; absence of documentation is not impossibility
+KServe canary,operational_signals,serving status,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+KServe canary,behavior_signals,configurable outside cited rollout guide,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+KServe canary,progressive_deployment,yes,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+KServe canary,revision_epoch_attribution,revision routing documented; cross-epoch decision validation not established,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+KServe canary,explicit_hold,not established,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+KServe canary,physical_containment_endpoint,rollback supported; request-level endpoint not established,kserveCanary,Qualified source scope; absence of documentation is not impossibility
+Kayenta,operational_signals,canary metrics,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Kayenta,behavior_signals,configurable metric analysis,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Kayenta,progressive_deployment,yes,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Kayenta,revision_epoch_attribution,not established,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Kayenta,explicit_hold,not established,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Kayenta,physical_containment_endpoint,not established,kayenta2018,Qualified source scope; absence of documentation is not impossibility
+Clipper,operational_signals,latency and throughput,clipper2017,Qualified source scope; absence of documentation is not impossibility
+Clipper,behavior_signals,online accuracy and model selection,clipper2017,Qualified source scope; absence of documentation is not impossibility
+Clipper,progressive_deployment,not studied,clipper2017,Qualified source scope; absence of documentation is not impossibility
+Clipper,revision_epoch_attribution,not studied,clipper2017,Qualified source scope; absence of documentation is not impossibility
+Clipper,explicit_hold,not studied,clipper2017,Qualified source scope; absence of documentation is not impossibility
+Clipper,physical_containment_endpoint,not studied,clipper2017,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,operational_signals,yes,this_work,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,behavior_signals,yes,this_work,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,progressive_deployment,yes,this_work,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,revision_epoch_attribution,yes under frozen identity rules,this_work,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,explicit_hold,yes,this_work,Qualified source scope; absence of documentation is not impossibility
+SafeRoll,physical_containment_endpoint,yes from requests,this_work,Qualified source scope; absence of documentation is not impossibility

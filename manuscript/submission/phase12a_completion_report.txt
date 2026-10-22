@@ -1,0 +1,33 @@
+SafeRoll Phase 12A completion report — 2026-10-21
+
+1. Phase 12A status: PARTIAL / GATE OPEN. Editorial files and declaration templates are prepared; live FGCS journal-specific guide checks remain unresolved. Author declarations are explicit placeholders as permitted in this phase.
+2. FGCS requirements source/status: official Elsevier FGCS scope page checked; both official FGCS author-guide URLs returned HTTP 403. Publisher-wide policies were checked, and unverified journal-only rules are flagged in fgcs_requirements.json.
+3. Confirmed article-type requirements: manuscript is drafted as a research article; exact FGCS submission-menu label and article-type conditions remain unverified.
+4. Abstract compliance: 233 words with balanced safety and cost findings; journal-specific word cap remains unverified.
+5. Keyword limit and selected keywords: six prepared — AI inference services; MLOps; progressive deployment; model serving; state consistency; rollback. Exact FGCS limit remains unverified.
+6. Highlight rules and final highlights: five bullets, all at most 85 characters under Elsevier's general rule; see highlights.txt and highlights_audit.md. FGCS mandatory status remains unverified.
+7. Graphical abstract requirement/status: journal-specific required/optional status unverified; design specification prepared, no image produced.
+8. Original citation count: 13.
+9. Papers inspected during final literature search: eight new candidates in literature_gap_audit.md; two already-cited FGCS papers rechecked.
+10. New citations added: two, INFaaS (USENIX ATC 2021) and MArk (USENIX ATC 2019).
+11. Final citation count: 15.
+12. New FGCS citations added: zero; four relevant FGCS citations retained, including two from 2026.
+13. Related-work changes: model-serving paragraph now acknowledges accuracy/performance-aware selection (INFaaS) and SLO/cost-aware cloud serving (MArk). Results and scientific claims are unchanged.
+14. Novelty statement: a revision/epoch/state-bound decision contract for combining operational and behavior evidence; no first-ever claim.
+15. Cover-letter status: FGCS-specific draft ready; originality and concurrent-submission assertion awaits author confirmation.
+16. Author metadata status: names, affiliations, ORCIDs if applicable, and corresponding-author contact remain blank.
+17. CRediT status: role template ready; assignments await author list and approval.
+18. Conflict declaration status: alternatives prepared; neither selected.
+19. Funding status: alternatives prepared; neither selected.
+20. Data/code statement status: inventory prepared; public-release or access route awaits author decision. No public availability is claimed.
+21. AI-use disclosure status: required substantive-use draft prepared under current Elsevier policy; exact tool/version, scope, and human oversight require author verification.
+22. Ethics statement status: conditional not-applicable template prepared; author must confirm no human, animal, clinical, or personal data.
+23. Reference verification result: 15 rows documented; five recorded DOIs matched indexed IEEE/Elsevier publisher metadata. Direct DOI resolver testing was unavailable; no DOI was invented.
+24. Figure production result: all 12 Phase 10 figures have vector PDF and review PNG; dimensions audited. Print-size legibility, final upload format, and journal-specific requirements need proofing.
+25. Table production result: ten Phase 10 table sources audited; wide overall-policy table split into two source panels without omitting columns. Final journal layout proof remains.
+26. Supplement plan: nine figures and eight tables in main draft; three figures and three tables in appendix/supplement; frozen configs/data/analysis/figures in repository package. Portal categories pending.
+27. Reproducibility-package status: inventory and frozen hashes prepared; no archive published.
+28. Editorial-risk audit: low scope/overclaim risk; medium novelty, bibliography breadth, abstract length, figure count, and external-validity limits; high journal-guide/file-format and author-declaration risk.
+29. Fact/claim/citation audits: manuscript/audit.py valid=true with zero fact, citation, and figure/table-reference issues; python3 -m pytest -q: 651 passed, 3 deselected in 77.88s.
+30. Unresolved author-input items: live FGCS guide or portal rules; author list/contact; all-author approval; COI, funding, CRediT, AI-use, ethics, data/code release, originality and concurrent-submission confirmations; final illustrated submission build.
+31. Whether Phase 12B may begin: NO for submission/upload. The Phase 12A acceptance gate remains open because current journal-specific rules cannot be verified from the blocked guide. Author declarations must be completed before upload.

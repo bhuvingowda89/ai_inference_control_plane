@@ -1,0 +1,6 @@
+work,operational_signals,behavior_signals,progressive_deployment,revision_epoch_attribution,explicit_hold,physical_containment_endpoint,source_key
+Argo Rollouts analysis,configurable,configurable through templates,yes,not established as built-in inference contract,inconclusive/manual judgment,not established,argoAnalysis
+KServe canary,serving status,configurable outside cited rollout guide,yes,revision routing documented; cross-epoch decision validation not established,not established,rollback supported; request-level endpoint not established,kserveCanary
+Kayenta,canary metrics,configurable metric analysis,yes,not established,not established,not established,kayenta2018
+Clipper,latency and throughput,online accuracy and model selection,not studied,not studied,not studied,not studied,clipper2017
+SafeRoll,yes,yes,yes,yes under frozen identity rules,yes,yes from requests,this_work

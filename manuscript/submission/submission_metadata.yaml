@@ -1,0 +1,30 @@
+journal: Future Generation Computer Systems
+article_type: research article  # provisional; confirm FGCS portal label
+title: 'SafeRoll: State-Consistent Progressive Deployment and Automated Rollback for AI Inference Services'
+authors: []  # AUTHOR INPUT
+affiliations: []  # AUTHOR INPUT
+corresponding_author: null  # AUTHOR INPUT
+abstract: |-
+  Progressive deployment limits the exposure of a new service revision while a controller decides whether to promote or roll it back. For artificial intelligence (AI) inference services, readiness, latency, and error rates can remain acceptable while model behavior degrades. Even behavior measurements can mislead a controller when they are stale or belong to a different revision or rollout epoch. We present SafeRoll, a control-plane policy that combines system and behavior evidence with freshness, revision attribution, and consistency between desired, observed, and effective serving state. SafeRoll makes PROMOTE, HOLD, and ROLLBACK first decisions; HOLD explicitly represents uncertainty and has measurable costs. We evaluate five frozen policies in RolloutBench across 650 validated mock runs and separately conduct six pinned real-CPU inference runs. In 91 unsafe mock evaluations per policy, SafeRoll made no unsafe promotions, whereas the strong system-and-behavior AIGate baseline made 10. In the paired historical-attribution condition, SafeRoll avoided all 10 immediate unsafe AIGate promotions, but its first HOLDs were classified as delayed rollback rather than correct immediate rollback. SafeRoll's safe promotions fell from AIGate's 26/39 to 16/39, and its request-normalized harmful exposure was slightly higher (0.40522 versus 0.40114). Recovery runs showed 53 mock logical units between rollback request and physical containment. The real inference block demonstrated structured-output failure despite faster, error-free serving. The results identify evidence attribution and physical containment as distinct control-plane concerns while quantifying the conservatism they introduce.
+keywords:
+  - 'AI inference services'
+  - 'MLOps'
+  - 'progressive deployment'
+  - 'model serving'
+  - 'state consistency'
+  - 'rollback'
+highlights:
+  - 'Cross-epoch evidence checks avoided 10 unsafe AIGate promotions.'
+  - 'SafeRoll made 0/91 unsafe promotions, versus 10/91 for AIGate.'
+  - 'SafeRoll''s safe promotions were 16/39, versus 26/39 for AIGate.'
+  - 'Physical containment followed rollback request by 53 logical units.'
+  - 'Faster real inference produced invalid structured output in 3/3 runs.'
+funding: null  # AUTHOR CONFIRMATION
+conflicts: null  # AUTHOR CONFIRMATION
+data_availability: null  # AUTHOR RELEASE DECISION
+code_availability: null  # AUTHOR RELEASE DECISION
+AI_use: manuscript/submission/ai_use_disclosure.md  # final text requires author review
+ethics: null  # AUTHOR CONFIRMATION
+cover_letter_path: manuscript/submission/cover_letter.md
+graphical_abstract_path: null  # guide status and author choice pending
+supplementary_files: []  # confirm portal categories

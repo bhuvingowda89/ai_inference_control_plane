@@ -1,0 +1,5 @@
+• Cross-epoch evidence checks avoided 10 unsafe AIGate promotions.
+• SafeRoll made 0/91 unsafe promotions, versus 10/91 for AIGate.
+• SafeRoll's safe promotions were 16/39, versus 26/39 for AIGate.
+• Physical containment followed rollback request by 53 logical units.
+• Faster real inference produced invalid structured output in 3/3 runs.

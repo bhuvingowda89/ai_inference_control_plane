@@ -1,0 +1,3 @@
+# Formatting audit
+
+The manuscript has numbered main sections, title, 233-word abstract, six keywords, figure/table captions, equations in source Markdown, references, and appendices. Figure/table-reference audit passes and Phase 10 assets are hash checked. Separate production files (editable manuscript, bibliography, figures, tables) are available, but the current `review.docx` is text-only and must not be uploaded as a complete illustrated manuscript. A journal-ready Word/LaTeX/PDF build with embedded figures, line numbering and spacing if demanded, and confirmed FGCS citation/figure/supplement rules remains to be produced after the live journal guide can be read. Do not infer FGCS rules from another Elsevier journal.

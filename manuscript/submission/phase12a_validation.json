@@ -1,0 +1,28 @@
+{
+  "author_specific_items_pending": [
+    "authors",
+    "CRediT",
+    "conflicts",
+    "funding",
+    "data/code release",
+    "AI use verification",
+    "ethics",
+    "originality/concurrent submission"
+  ],
+  "checks": {
+    "declaration_templates_ready": true,
+    "highlight_char_limit": true,
+    "highlight_count": true,
+    "journal_specific_guide_verified": false,
+    "keywords_six": true,
+    "phase10_figure_pairing": true,
+    "phase10_hash": true,
+    "phase10_table_sources": true,
+    "phase9_hash": true
+  },
+  "issues": [
+    "journal_specific_guide_verified"
+  ],
+  "phase12a_gate_passed": false,
+  "ready_to_upload": false
+}

@@ -1,0 +1,97 @@
+{
+  "access_date": "2026-10-21",
+  "journal_guide_access": "403 Forbidden at both official FGCS URLs; indexed snippets do not establish all current journal-specific rules",
+  "requirements": [
+    {
+      "finding": "Research article is the intended ordinary article type; exact submission-menu label requires FGCS guide/system check",
+      "item": "article_type",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "233 words; journal-specific maximum/structure could not be confirmed",
+      "item": "abstract",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Six selected; exact FGCS maximum could not be confirmed",
+      "item": "keywords",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Five prepared; 3\u20135 and <=85 characters each meet Elsevier general rules; FGCS mandatory status unknown",
+      "item": "highlights",
+      "status": "PUBLISHER_VERIFIED_JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Design specification prepared; FGCS required/optional status unknown",
+      "item": "graphical_abstract",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Consistent author-year keys and verified metadata; exact FGCS citation style unknown",
+      "item": "references",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Separate PDF vectors and PNG review images available; final FGCS format/upload constraints unknown",
+      "item": "figures",
+      "status": "PARTIAL"
+    },
+    {
+      "finding": "Source CSV and PDF/PNG renderings available; final FGCS layout constraints unknown",
+      "item": "tables",
+      "status": "PARTIAL"
+    },
+    {
+      "finding": "Package plan prepared; journal-specific upload categories unknown",
+      "item": "supplementary",
+      "status": "JOURNAL_UNVERIFIED"
+    },
+    {
+      "finding": "Markdown source and generated review files available; accepted production-source format needs confirmation",
+      "item": "source_files",
+      "status": "PARTIAL"
+    },
+    {
+      "finding": "Availability statement drafted truthfully; repository release/access choice pending author",
+      "item": "data_code",
+      "status": "AUTHOR_PENDING"
+    },
+    {
+      "finding": "Separate disclosure before references is required for substantive AI manuscript assistance",
+      "item": "ai_use",
+      "status": "PUBLISHER_VERIFIED"
+    },
+    {
+      "finding": "Templates prepared; author-specific facts pending",
+      "item": "conflicts_funding_credit",
+      "status": "AUTHOR_PENDING"
+    },
+    {
+      "finding": "Name/contact/affiliation pending",
+      "item": "corresponding_author",
+      "status": "AUTHOR_PENDING"
+    },
+    {
+      "finding": "FGCS-specific draft prepared; originality and concurrent-submission assertion pending author",
+      "item": "cover_letter",
+      "status": "AUTHOR_PENDING"
+    },
+    {
+      "finding": "No account or upload attempted; current FGCS workflow must be checked by corresponding author",
+      "item": "submission_system",
+      "status": "JOURNAL_UNVERIFIED"
+    }
+  ],
+  "sources": {
+    "ai_policy": "https://www.elsevier.com/en-au/about/policies-and-standards/generative-ai-policies-for-journals",
+    "artwork": "https://www.prod.webpresence.elsevier.com/about/policies-and-standards/author/artwork-and-media-instructions/artwork-sizing",
+    "credit": "https://www.elsevier.support/publishing/answer/how-do-i-enter-author-contributor-roles-in-editorial-manager",
+    "ethics": "https://www.elsevier.com/about/policies-and-standards/publishing-ethics",
+    "fgcs_guide": "https://www.sciencedirect.com/journal/future-generation-computer-systems/publish/guide-for-authors",
+    "fgcs_legacy": "https://www.elsevier.com/journals/future-generation-computer-systems/0167-739X/guide-for-authors",
+    "fgcs_scope": "https://shop.elsevier.com/journals/future-generation-computer-systems/0167-739X",
+    "graphical": "https://www.elsevier.com/researcher/author/tools-and-resources/graphical-abstract",
+    "highlights": "https://www.elsevier.support/publishing/answer/how-do-i-include-highlights-with-my-manuscript"
+  }
+}
